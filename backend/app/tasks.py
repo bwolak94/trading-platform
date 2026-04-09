@@ -158,9 +158,151 @@ async def _fetch_onchain():
 
 
 async def _run_signal_pipeline():
-    """Execute the full signal generation pipeline."""
-    # TODO: Wire up in TASK-306 after strategies and aggregator are built
-    logger.info("Signal pipeline run (not yet implemented)")
+    """Execute the full signal generation pipeline.
+
+    For each asset: load market data, get latest sentiment/on-chain scores,
+    run the SignalAggregator, and save emitted signals to DB.
+    """
+    from app.ai.risk.engine import RiskEngine
+    from app.ai.signals.aggregator import SignalAggregator
+    from app.core.database import async_session
+    from app.core.websocket import manager
+    from app.data.fetchers.onchain_fetcher import OnChainFetcher
+    from app.models.market_data import MarketData
+    from app.models.onchain_event import OnChainEvent
+    from app.models.sentiment_data import SentimentData
+    from app.models.signal import Signal as SignalModel
+
+    import pandas as pd
+
+    aggregator = SignalAggregator()
+    risk_engine = RiskEngine()
+    onchain_fetcher = OnChainFetcher()
+    now = datetime.now(timezone.utc)
+    default_user_id = "default"
+
+    async with async_session() as session:
+        # Check kill switch
+        if await risk_engine.check_kill_switch(default_user_id, session):
+            logger.info("Kill switch active — skipping signal pipeline")
+            return
+
+        for symbol in DEFAULT_SYMBOLS:
+            try:
+                # Load recent market data (4h timeframe for signal generation)
+                result = await session.execute(
+                    select(MarketData)
+                    .where(MarketData.asset == symbol, MarketData.timeframe == "4h")
+                    .order_by(MarketData.timestamp.desc())
+                    .limit(300)
+                )
+                rows = result.scalars().all()
+                if len(rows) < 200:
+                    logger.debug("Insufficient data for %s (%d rows)", symbol, len(rows))
+                    continue
+
+                # Convert to DataFrame
+                df = pd.DataFrame([{
+                    "timestamp": r.timestamp,
+                    "open": float(r.open),
+                    "high": float(r.high),
+                    "low": float(r.low),
+                    "close": float(r.close),
+                    "volume": float(r.volume),
+                } for r in reversed(rows)])
+
+                # Get latest sentiment score
+                sent_result = await session.execute(
+                    select(SentimentData)
+                    .where(SentimentData.asset == symbol)
+                    .order_by(SentimentData.created_at.desc())
+                    .limit(1)
+                )
+                sent_row = sent_result.scalar_one_or_none()
+                sentiment_score = float(sent_row.score) if sent_row else 0.0
+
+                # Get recent on-chain events and compute aggregate score
+                oc_result = await session.execute(
+                    select(OnChainEvent)
+                    .where(
+                        OnChainEvent.asset == symbol,
+                        OnChainEvent.timestamp >= now - timedelta(hours=24),
+                    )
+                    .order_by(OnChainEvent.timestamp.desc())
+                )
+                oc_rows = oc_result.scalars().all()
+                oc_events = [{
+                    "event_type": e.event_type,
+                    "timestamp": e.timestamp,
+                } for e in oc_rows]
+                onchain_score = onchain_fetcher.compute_aggregate_score(oc_events)
+
+                # Run aggregator
+                signal = aggregator.aggregate(
+                    asset=symbol,
+                    timeframe="4h",
+                    market_data=df,
+                    onchain_score=onchain_score,
+                    sentiment_score=sentiment_score,
+                )
+
+                if not signal:
+                    continue
+
+                # Calculate position size
+                from app.models.user_settings import UserSettings
+                us_result = await session.execute(
+                    select(UserSettings).where(UserSettings.user_id == default_user_id)
+                )
+                user_settings = us_result.scalar_one_or_none()
+                position_pct = 0.0
+                if user_settings and user_settings.capital:
+                    ps = risk_engine.calculate_position_size(
+                        capital=float(user_settings.capital),
+                        risk_pct=float(user_settings.risk_per_trade_pct),
+                        entry=signal.entry_price,
+                        stop_loss=signal.stop_loss,
+                    )
+                    position_pct = ps.position_pct
+
+                # Save signal to DB
+                db_signal = SignalModel(
+                    asset=signal.asset,
+                    direction=signal.direction,
+                    confidence=Decimal(str(signal.confidence)),
+                    regime=signal.factors[0].get("label", "UNKNOWN") if signal.factors else "UNKNOWN",
+                    entry_price=Decimal(str(signal.entry_price)),
+                    stop_loss=Decimal(str(signal.stop_loss)),
+                    take_profit_1=Decimal(str(signal.take_profit_1)),
+                    take_profit_2=Decimal(str(signal.take_profit_2)),
+                    risk_reward=Decimal(str(signal.risk_reward)),
+                    position_size_pct=Decimal(str(position_pct)),
+                    technical_score=Decimal(str(signal.confidence)),
+                    onchain_score=Decimal(str(onchain_score)),
+                    sentiment_score=Decimal(str(sentiment_score)),
+                    factors=signal.factors,
+                    status="ACTIVE",
+                    expires_at=now + timedelta(hours=24),
+                )
+                session.add(db_signal)
+                await session.commit()
+
+                # Broadcast via WebSocket
+                await manager.broadcast("signals", {
+                    "type": "NEW_SIGNAL",
+                    "payload": {
+                        "asset": signal.asset,
+                        "direction": signal.direction,
+                        "confidence": signal.confidence,
+                        "entry_price": signal.entry_price,
+                        "strategy": signal.strategy_name,
+                    },
+                })
+
+                logger.info("Signal saved: %s %s conf=%.1f", symbol, signal.direction, signal.confidence)
+
+            except Exception as exc:
+                logger.error("Signal pipeline failed for %s: %s", symbol, exc)
 
 
 async def _check_signal_status():
@@ -268,3 +410,130 @@ def run_signal_pipeline():
 def check_signal_status():
     """Check if active signals hit TP/SL levels."""
     _run_async(_check_signal_status())
+
+
+@celery_app.task(name="app.tasks.run_backtest_task")
+def run_backtest_task(
+    strategy_name: str,
+    asset: str,
+    timeframe: str,
+    from_date: str,
+    to_date: str,
+    initial_capital: float = 10000.0,
+    risk_per_trade_pct: float = 1.5,
+):
+    """Run a backtest and save results to DB."""
+    _run_async(_run_backtest(
+        strategy_name, asset, timeframe, from_date, to_date,
+        initial_capital, risk_per_trade_pct,
+    ))
+
+
+async def _run_backtest(
+    strategy_name: str,
+    asset: str,
+    timeframe: str,
+    from_date: str,
+    to_date: str,
+    initial_capital: float,
+    risk_per_trade_pct: float,
+):
+    """Execute a backtest and save results."""
+    import pandas as pd
+    from datetime import date as date_type
+
+    from app.ai.strategies.mean_reversion import MeanReversionStrategy
+    from app.ai.strategies.smc_strategy import SMCStrategy
+    from app.ai.strategies.trend_following import TrendFollowingStrategy
+    from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
+    from app.backtesting.monte_carlo import MonteCarloSimulator
+    from app.backtesting.walk_forward import WalkForwardBacktester
+    from app.core.database import async_session
+    from app.models.backtest_result import BacktestResult
+    from app.models.market_data import MarketData
+
+    strategy_map = {
+        "trend_following": TrendFollowingStrategy,
+        "mean_reversion": MeanReversionStrategy,
+        "smc": SMCStrategy,
+        "volume_breakout": VolumeBreakoutStrategy,
+    }
+
+    strategy_cls = strategy_map.get(strategy_name)
+    if not strategy_cls:
+        logger.error("Unknown strategy: %s", strategy_name)
+        return
+
+    strategy = strategy_cls()
+    start = date_type.fromisoformat(from_date)
+    end = date_type.fromisoformat(to_date)
+
+    async with async_session() as session:
+        # Load historical data
+        result = await session.execute(
+            select(MarketData)
+            .where(
+                MarketData.asset == asset,
+                MarketData.timeframe == timeframe,
+                MarketData.timestamp >= from_date,
+                MarketData.timestamp <= to_date,
+            )
+            .order_by(MarketData.timestamp.asc())
+        )
+        rows = result.scalars().all()
+
+        if not rows:
+            logger.error("No market data for backtest %s %s", asset, timeframe)
+            return
+
+        df = pd.DataFrame([{
+            "timestamp": r.timestamp,
+            "open": float(r.open),
+            "high": float(r.high),
+            "low": float(r.low),
+            "close": float(r.close),
+            "volume": float(r.volume),
+        } for r in rows])
+
+        # Run walk-forward backtest
+        backtester = WalkForwardBacktester()
+        bt_result = backtester.run(
+            strategy=strategy,
+            market_data=df,
+            asset=asset,
+            timeframe=timeframe,
+            start_date=start,
+            end_date=end,
+            initial_capital=initial_capital,
+            risk_per_trade_pct=risk_per_trade_pct,
+        )
+
+        # Run Monte Carlo
+        mc = MonteCarloSimulator()
+        mc_result = mc.run(bt_result.trades, iterations=1000, initial_capital=initial_capital)
+
+        # Save to DB
+        db_result = BacktestResult(
+            strategy_name=strategy_name,
+            asset=asset,
+            timeframe=timeframe,
+            period_start=start,
+            period_end=end,
+            win_rate=Decimal(str(bt_result.metrics.win_rate)),
+            profit_factor=Decimal(str(min(bt_result.metrics.profit_factor, 9999))),
+            max_drawdown=Decimal(str(bt_result.metrics.max_drawdown)),
+            sharpe_ratio=Decimal(str(bt_result.metrics.sharpe_ratio)),
+            calmar_ratio=Decimal(str(min(bt_result.metrics.calmar_ratio, 9999))),
+            total_trades=bt_result.metrics.total_trades,
+            prob_ruin_20pct=Decimal(str(mc_result.prob_ruin_20pct)),
+            prob_ruin_30pct=Decimal(str(mc_result.prob_ruin_30pct)),
+            equity_curve=bt_result.equity_curve,
+        )
+        session.add(db_result)
+        await session.commit()
+
+        logger.info(
+            "Backtest saved: %s %s %s | WR=%.1f%% MDD=%.1f%%",
+            strategy_name, asset, timeframe,
+            bt_result.metrics.win_rate, bt_result.metrics.max_drawdown,
+        )
