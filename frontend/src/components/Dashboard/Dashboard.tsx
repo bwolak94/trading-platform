@@ -2,18 +2,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
   fetchActiveSignals,
-  fetchRegimes,
-  fetchSentiment,
   fetchSettings,
   resetKillSwitch,
 } from "../../api/client";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useAppStore } from "../../store";
 import type { Signal } from "../../types";
-import { RegimePanel } from "../RegimeIndicator/RegimeIndicator";
 import { RiskPanel } from "../RiskPanel/RiskPanel";
 import { SignalCard } from "../SignalCard/SignalCard";
-import { SentimentBar } from "./SentimentBar";
+import { AnalysisPanel } from "./AnalysisPanel";
+import { LiveRegimePanel } from "./LiveRegimePanel";
+import { PriceChart } from "./PriceChart";
+import { Heatmap } from "./Heatmap";
+import { TradingChat } from "./TradingChat";
 
 export function Dashboard() {
   const { isConnected, lastMessage, subscribe } = useWebSocket();
@@ -21,8 +22,6 @@ export function Dashboard() {
     activeSignals,
     setActiveSignals,
     addSignal,
-    regimes,
-    setRegimes,
     settings,
     setSettings,
     systemPaused,
@@ -31,23 +30,10 @@ export function Dashboard() {
     setDrawdownPct,
   } = useAppStore();
 
-  // Fetch initial data
   const signalsQuery = useQuery({
     queryKey: ["activeSignals"],
     queryFn: fetchActiveSignals,
     refetchInterval: 30_000,
-  });
-
-  const regimesQuery = useQuery({
-    queryKey: ["regimes"],
-    queryFn: fetchRegimes,
-    refetchInterval: 60_000,
-  });
-
-  const sentimentQuery = useQuery({
-    queryKey: ["sentiment"],
-    queryFn: fetchSentiment,
-    refetchInterval: 60_000,
   });
 
   const settingsQuery = useQuery({
@@ -55,14 +41,9 @@ export function Dashboard() {
     queryFn: fetchSettings,
   });
 
-  // Sync query data to store
   useEffect(() => {
     if (signalsQuery.data) setActiveSignals(signalsQuery.data.data);
   }, [signalsQuery.data, setActiveSignals]);
-
-  useEffect(() => {
-    if (regimesQuery.data) setRegimes(regimesQuery.data);
-  }, [regimesQuery.data, setRegimes]);
 
   useEffect(() => {
     if (settingsQuery.data) {
@@ -71,29 +52,19 @@ export function Dashboard() {
     }
   }, [settingsQuery.data, setSettings, setSystemPaused]);
 
-  // Subscribe to WebSocket channels
   useEffect(() => {
-    if (isConnected) {
-      subscribe(["signals", "regime", "sentiment"]);
-    }
+    if (isConnected) subscribe(["signals", "regime", "sentiment"]);
   }, [isConnected, subscribe]);
 
-  // Handle incoming WebSocket messages
   useEffect(() => {
     if (!lastMessage) return;
-
-    if (lastMessage.type === "NEW_SIGNAL") {
-      addSignal(lastMessage.payload as unknown as Signal);
-    }
+    if (lastMessage.type === "NEW_SIGNAL") addSignal(lastMessage.payload as unknown as Signal);
     if (lastMessage.type === "KILL_SWITCH_TRIGGERED") {
       setSystemPaused(true);
       const dd = lastMessage.payload["drawdown_pct"];
       if (typeof dd === "number") setDrawdownPct(dd);
     }
-    if (lastMessage.type === "REGIME_CHANGE" && regimesQuery.refetch) {
-      void regimesQuery.refetch();
-    }
-  }, [lastMessage, addSignal, setSystemPaused, setDrawdownPct, regimesQuery]);
+  }, [lastMessage, addSignal, setSystemPaused, setDrawdownPct]);
 
   const handleResetKillSwitch = async () => {
     await resetKillSwitch();
@@ -103,38 +74,46 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header bar */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-white">AI Trading Navigator</h1>
-          <span
-            className={`rounded px-2 py-0.5 text-xs font-bold ${
-              systemPaused
-                ? "bg-bearish/20 text-bearish"
-                : "bg-bullish/20 text-bullish"
-            }`}
-          >
+          <span className={`rounded px-2 py-0.5 text-xs font-bold ${systemPaused ? "bg-bearish/20 text-bearish" : "bg-bullish/20 text-bullish"}`}>
             {systemPaused ? "PAUSED" : "ACTIVE"}
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span
-            className={`h-2 w-2 rounded-full ${isConnected ? "bg-bullish" : "bg-bearish"}`}
-          />
+          <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-bullish" : "bg-bearish"}`} />
           {isConnected ? "Connected" : "Disconnected"}
         </div>
       </div>
 
-      {/* Main grid */}
+      {/* Chart + Chat side by side */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <PriceChart />
+        </div>
+        <div>
+          <TradingChat />
+        </div>
+      </div>
+
+      {/* Heatmap + Live Regimes side by side */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Heatmap asset="BTCUSDT" interval="4h" />
+        <div className="space-y-4">
+          <LiveRegimePanel />
+          <AnalysisPanel />
+        </div>
+      </div>
+
+      {/* Signals + Risk */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Signal Feed — spans 2 columns */}
         <div className="space-y-4 lg:col-span-2">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">
-            Signal Feed
-          </h2>
+          <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Signal Feed</h2>
           {activeSignals.length === 0 && (
             <div className="rounded-lg border border-border bg-surface p-8 text-center text-gray-500">
-              No active signals
+              No active signals — run AI Analysis above to generate signals
             </div>
           )}
           {activeSignals
@@ -143,11 +122,7 @@ export function Dashboard() {
               <SignalCard key={signal.id} signal={signal} isNew={i === 0} />
             ))}
         </div>
-
-        {/* Right sidebar */}
         <div className="space-y-4">
-          <RegimePanel regimes={regimes} />
-          <SentimentBar sentiments={sentimentQuery.data ?? []} />
           <RiskPanel
             systemStatus={systemPaused ? "PAUSED" : "ACTIVE"}
             drawdownPct={drawdownPct}

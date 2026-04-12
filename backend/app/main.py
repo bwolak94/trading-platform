@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import backtest, market, settings, signals
+from app.api.v1 import analyze, backtest, chat, market, settings, signals
 from app.core.config import settings as app_settings
 from app.core.websocket import manager
 
@@ -62,6 +62,8 @@ app.include_router(signals.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")
 app.include_router(backtest.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
+app.include_router(analyze.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")
 
 
 # Health & status

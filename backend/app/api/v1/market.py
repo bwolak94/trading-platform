@@ -1,6 +1,7 @@
 """Market data endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,6 +101,226 @@ async def get_onchain_events(
     )
     events = result.scalars().all()
     return [OnChainEventResponse.model_validate(e) for e in events]
+
+
+@router.get("/klines")
+async def get_klines(
+    asset: str = Query(default="BTCUSDT", description="Trading pair symbol, e.g. BTCUSDT"),
+    interval: str = Query(default="1h", description="Kline interval, e.g. 1m, 5m, 15m, 1h, 4h, 1d"),
+    limit: int = Query(default=300, ge=1, le=1000, description="Number of candles to return"),
+) -> list[dict]:
+    """Proxy Binance kline data to avoid CORS issues on the frontend."""
+    binance_url = "https://api.binance.com/api/v3/klines"
+    params = {"symbol": asset, "interval": interval, "limit": limit}
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.get(binance_url, params=params)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=f"Binance API error: {exc.response.text}",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to reach Binance API: {exc}",
+            ) from exc
+
+    raw_klines: list[list] = response.json()
+    return [
+        {
+            "time": int(k[0]) // 1000,  # Convert ms to unix seconds
+            "open": float(k[1]),
+            "high": float(k[2]),
+            "low": float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        }
+        for k in raw_klines
+    ]
+
+
+@router.get("/indicators")
+async def get_indicators(
+    asset: str = Query(default="BTCUSDT"),
+    interval: str = Query(default="1h"),
+    limit: int = Query(default=300, ge=50, le=1000),
+) -> dict:
+    """Compute technical indicators on live Binance data.
+
+    Returns EMA, Bollinger Bands, Order Blocks, FVGs, liquidation estimates.
+    """
+    import numpy as np
+    from app.ai.strategies.smc_strategy import find_order_blocks, find_fair_value_gaps
+    from app.data.processors.feature_engineer import compute_features
+
+    # Fetch klines
+    binance_url = "https://api.binance.com/api/v3/klines"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(binance_url, params={"symbol": asset, "interval": interval, "limit": limit})
+        resp.raise_for_status()
+    raw = resp.json()
+
+    import pandas as pd
+    from datetime import datetime, timezone
+
+    df = pd.DataFrame([{
+        "timestamp": datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc),
+        "open": float(k[1]), "high": float(k[2]), "low": float(k[3]),
+        "close": float(k[4]), "volume": float(k[5]),
+    } for k in raw])
+
+    featured = compute_features(df)
+    if featured.empty:
+        return {"error": "Insufficient data"}
+
+    times = [int(t.timestamp()) for t in featured["timestamp"]]
+
+    # EMAs
+    ema_20 = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ema_20"])]
+    ema_50 = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ema_50"])]
+    ema_200 = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ema_200"])]
+
+    # Bollinger Bands
+    bb_upper = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["bb_upper"])]
+    bb_middle = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["bb_middle"])]
+    bb_lower = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["bb_lower"])]
+
+    # RSI (for separate pane)
+    rsi = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["rsi_14"])]
+
+    # MACD
+    macd_line = [{"time": t, "value": round(v, 4)} for t, v in zip(times, featured["macd"])]
+    macd_signal = [{"time": t, "value": round(v, 4)} for t, v in zip(times, featured["macd_signal"])]
+    macd_hist = [{"time": t, "value": round(v, 4)} for t, v in zip(times, featured["macd_diff"])]
+
+    # Order Blocks — with clear LONG/SHORT signal
+    obs = find_order_blocks(featured, lookback=40)
+    order_blocks = []
+    last_close = float(featured.iloc[-1]["close"])
+    for ob in obs:
+        idx = ob["index"]
+        row_pos = featured.index.get_loc(idx)
+        if row_pos < len(times):
+            # Bullish OB below price = LONG zone, Bearish OB above price = SHORT zone
+            if ob["type"] == "bullish":
+                signal = "LONG" if ob["mid"] < last_close else "WATCH_LONG"
+                status = "active" if ob["mid"] < last_close else "broken"
+            else:
+                signal = "SHORT" if ob["mid"] > last_close else "WATCH_SHORT"
+                status = "active" if ob["mid"] > last_close else "broken"
+
+            order_blocks.append({
+                "time": times[row_pos],
+                "type": ob["type"],
+                "signal": signal,
+                "status": status,
+                "high": round(ob["high"], 2),
+                "low": round(ob["low"], 2),
+                "mid": round(ob["mid"], 2),
+                "strength": round(ob["strength"], 2),
+                "distance_pct": round(abs(last_close - ob["mid"]) / last_close * 100, 2),
+            })
+
+    # Fair Value Gaps — with LONG/SHORT signal
+    fvgs = find_fair_value_gaps(featured, lookback=40)
+    fair_value_gaps = []
+    for fvg in fvgs:
+        idx = fvg["index"]
+        row_pos = featured.index.get_loc(idx)
+        if row_pos < len(times):
+            if fvg["type"] == "bullish":
+                signal = "LONG" if fvg["mid"] < last_close else "WATCH"
+            else:
+                signal = "SHORT" if fvg["mid"] > last_close else "WATCH"
+
+            filled = (fvg["type"] == "bullish" and last_close < fvg["bottom"]) or \
+                     (fvg["type"] == "bearish" and last_close > fvg["top"])
+            fair_value_gaps.append({
+                "time": times[row_pos],
+                "type": fvg["type"],
+                "signal": signal,
+                "filled": filled,
+                "top": round(fvg["top"], 2),
+                "bottom": round(fvg["bottom"], 2),
+                "mid": round((fvg["top"] + fvg["bottom"]) / 2, 2),
+                "size_pct": round(abs(fvg["top"] - fvg["bottom"]) / last_close * 100, 3),
+            })
+
+    # Volume Profile — aggregate volume at price levels for heatmap
+    atr = float(featured.iloc[-1]["atr_14"])
+    price_min = float(featured["low"].min())
+    price_max = float(featured["high"].max())
+    bucket_size = atr * 0.5  # each bucket = 0.5 ATR
+    num_buckets = max(int((price_max - price_min) / bucket_size) + 1, 1)
+    volume_profile = []
+    for i in range(num_buckets):
+        bucket_low = price_min + i * bucket_size
+        bucket_high = bucket_low + bucket_size
+        # Sum volume of candles that touch this price range
+        mask = (featured["high"] >= bucket_low) & (featured["low"] <= bucket_high)
+        vol = float(featured.loc[mask, "volume"].sum())
+        buy_vol = float(featured.loc[mask & (featured["close"] >= featured["open"]), "volume"].sum())
+        sell_vol = vol - buy_vol
+        volume_profile.append({
+            "price_low": round(bucket_low, 2),
+            "price_high": round(bucket_high, 2),
+            "price_mid": round((bucket_low + bucket_high) / 2, 2),
+            "total_volume": round(vol, 2),
+            "buy_volume": round(buy_vol, 2),
+            "sell_volume": round(sell_vol, 2),
+            "pct_of_max": 0,  # filled below
+        })
+
+    # Normalize volume profile
+    max_vol = max((vp["total_volume"] for vp in volume_profile), default=1)
+    for vp in volume_profile:
+        vp["pct_of_max"] = round(vp["total_volume"] / max_vol * 100, 1) if max_vol > 0 else 0
+
+    # POC (Point of Control) — price level with highest volume
+    poc = max(volume_profile, key=lambda x: x["total_volume"]) if volume_profile else None
+
+    # Liquidation heatmap — estimated levels with intensity
+    liquidation_levels = []
+    leverage_levels = [5, 10, 25, 50, 100]
+    for lev in leverage_levels:
+        # Long liquidation = price - (price / leverage)
+        long_liq = round(last_close * (1 - 1 / lev), 2)
+        # Short liquidation = price + (price / leverage)
+        short_liq = round(last_close * (1 + 1 / lev), 2)
+        # Intensity based on how common this leverage is (lower = more common)
+        intensity = min(100, int(200 / lev))
+        liquidation_levels.append({
+            "price": long_liq, "side": "long", "leverage": lev,
+            "distance_pct": round((last_close - long_liq) / last_close * 100, 2),
+            "intensity": intensity,
+        })
+        liquidation_levels.append({
+            "price": short_liq, "side": "short", "leverage": lev,
+            "distance_pct": round((short_liq - last_close) / last_close * 100, 2),
+            "intensity": intensity,
+        })
+
+    return {
+        "ema_20": ema_20,
+        "ema_50": ema_50,
+        "ema_200": ema_200,
+        "bb_upper": bb_upper,
+        "bb_middle": bb_middle,
+        "bb_lower": bb_lower,
+        "rsi": rsi,
+        "macd_line": macd_line,
+        "macd_signal": macd_signal,
+        "macd_hist": macd_hist,
+        "order_blocks": order_blocks,
+        "fair_value_gaps": fair_value_gaps,
+        "liquidation_levels": liquidation_levels,
+        "volume_profile": volume_profile,
+        "poc": poc,
+        "current_price": last_close,
+    }
 
 
 @router.get("/calendar")

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     REDDIT_CLIENT_ID: str = ""
     REDDIT_CLIENT_SECRET: str = ""
 
+    # AI Chat
+    ANTHROPIC_API_KEY: str = ""
+
     # Notifications
     TELEGRAM_BOT_TOKEN: str = ""
 
