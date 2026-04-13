@@ -29,6 +29,23 @@ const CRYPTO_ASSETS = [
   { label: "BTC/USDT", value: "BTCUSDT" },
   { label: "ETH/USDT", value: "ETHUSDT" },
   { label: "SOL/USDT", value: "SOLUSDT" },
+  { label: "BNB/USDT", value: "BNBUSDT" },
+  { label: "XRP/USDT", value: "XRPUSDT" },
+  { label: "DOGE/USDT", value: "DOGEUSDT" },
+  { label: "ADA/USDT", value: "ADAUSDT" },
+  { label: "AVAX/USDT", value: "AVAXUSDT" },
+  { label: "DOT/USDT", value: "DOTUSDT" },
+  { label: "LINK/USDT", value: "LINKUSDT" },
+  { label: "MATIC/USDT", value: "MATICUSDT" },
+  { label: "UNI/USDT", value: "UNIUSDT" },
+  { label: "ATOM/USDT", value: "ATOMUSDT" },
+  { label: "LTC/USDT", value: "LTCUSDT" },
+  { label: "FIL/USDT", value: "FILUSDT" },
+  { label: "APT/USDT", value: "APTUSDT" },
+  { label: "ARB/USDT", value: "ARBUSDT" },
+  { label: "OP/USDT", value: "OPUSDT" },
+  { label: "SUI/USDT", value: "SUIUSDT" },
+  { label: "PEPE/USDT", value: "PEPEUSDT" },
 ] as const;
 const FOREX_ASSETS = [
   { label: "EUR/USD", value: "EURUSD" },
@@ -98,9 +115,11 @@ function fmtVol(v: number): string {
 
 interface PriceChartProps {
   onAssetChange?: (asset: string, timeframe: string) => void;
+  activePosition?: Record<string, { type: string; entry: number; sl: number; tps: number[]; action: string; strategy: string; confidence: number }>;
+  compact?: boolean;
 }
 
-export function PriceChart({ onAssetChange }: PriceChartProps = {}) {
+export function PriceChart({ onAssetChange, activePosition, compact }: PriceChartProps = {}) {
   const [asset, setAsset] = useState<Asset>("BTCUSDT");
   const [tf, setTf] = useState<Timeframe>("1h");
   const [count, setCount] = useState<CandleCountOption>(300);
@@ -193,7 +212,7 @@ export function PriceChart({ onAssetChange }: PriceChartProps = {}) {
       {/* Chart — all pairs now supported */}
       <ChartCanvas key={`${asset}-${tf}-${count}-${indicatorKey}`}
         asset={asset} timeframe={tf} candleLimit={count}
-        activeIndicators={activeIndicators} />
+        activeIndicators={activeIndicators} activePosition={activePosition} compact={compact} />
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border px-4 py-1.5 text-xs text-gray-500">
@@ -218,8 +237,10 @@ export function PriceChart({ onAssetChange }: PriceChartProps = {}) {
 /*  Chart canvas — remounts via key on param change                   */
 /* ------------------------------------------------------------------ */
 
-function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
+function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePosition, compact }: {
   asset: string; timeframe: string; candleLimit: number; activeIndicators: Set<IndicatorId>;
+  activePosition?: Record<string, { type: string; entry: number; sl: number; tps: number[]; action: string; strategy: string; confidence: number }>;
+  compact?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState<OHLCVInfo | null>(null);
@@ -234,7 +255,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
     let cancelled = false;
 
     const chart = createChart(el, {
-      width: el.clientWidth, height: 550,
+      width: el.clientWidth, height: compact ? 350 : 550,
       layout: { background: { type: ColorType.Solid, color: "#0d1117" }, textColor: "#8b949e", fontFamily: "'Inter', sans-serif" },
       grid: { vertLines: { color: "#1c2128", style: LineStyle.Dotted }, horzLines: { color: "#1c2128", style: LineStyle.Dotted } },
       crosshair: { mode: CrosshairMode.Normal,
@@ -284,6 +305,30 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
         setBar({ open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
       }
 
+      // Draw active agent position on chart
+      if (activePosition) {
+        const pos = activePosition[asset.toUpperCase()];
+        if (pos) {
+          // Entry line (yellow)
+          priceLines.push(cs.createPriceLine({
+            price: pos.entry, color: "#facc15", lineWidth: 2, lineStyle: LineStyle.Solid,
+            axisLabelVisible: true, title: `${pos.action} Entry (${pos.strategy})`,
+          }));
+          // SL line (red)
+          priceLines.push(cs.createPriceLine({
+            price: pos.sl, color: "#ff4757", lineWidth: 2, lineStyle: LineStyle.Solid,
+            axisLabelVisible: true, title: `SL`,
+          }));
+          // TP lines (green)
+          pos.tps.forEach((tp, i) => {
+            priceLines.push(cs.createPriceLine({
+              price: tp, color: "#00d4aa", lineWidth: 1, lineStyle: LineStyle.Dashed,
+              axisLabelVisible: true, title: `TP${i + 1}`,
+            }));
+          });
+        }
+      }
+
       // Load indicators + liquidation heatmap
       const promises: Promise<void>[] = [];
 
@@ -319,7 +364,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
     }).catch(() => setLoading(false));
 
     // Live updates — WebSocket for crypto, polling for forex
-    const isCryptoPair = ["BTCUSDT", "ETHUSDT", "SOLUSDT"].includes(asset.toUpperCase());
+    const isCryptoPair = CRYPTO_SET.has(asset.toUpperCase());
     let ws: WebSocket | null = null;
     let reconTimer: ReturnType<typeof setTimeout> | null = null;
     let forexPollTimer: ReturnType<typeof setInterval> | null = null;

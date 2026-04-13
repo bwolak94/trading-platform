@@ -15,7 +15,7 @@ import { Heatmap } from "./Heatmap";
 import { LiquidationHeatmap } from "./LiquidationHeatmap";
 import { LiveRegimePanel } from "./LiveRegimePanel";
 import { OrderFlowPanel } from "./OrderFlowPanel";
-import { PriceChart } from "./PriceChart";
+import { MultiChart } from "./MultiChart";
 import { IntelligencePanel } from "./IntelligencePanel";
 import { TradingChat } from "./TradingChat";
 
@@ -37,6 +37,12 @@ export function Dashboard() {
   // Map display format for components that expect "BTC/USDT" style
   const assetMap: Record<string, string> = {
     BTCUSDT: "BTC/USDT", ETHUSDT: "ETH/USDT", SOLUSDT: "SOL/USDT",
+    BNBUSDT: "BNB/USDT", XRPUSDT: "XRP/USDT", DOGEUSDT: "DOGE/USDT",
+    ADAUSDT: "ADA/USDT", AVAXUSDT: "AVAX/USDT", DOTUSDT: "DOT/USDT",
+    LINKUSDT: "LINK/USDT", MATICUSDT: "MATIC/USDT", UNIUSDT: "UNI/USDT",
+    ATOMUSDT: "ATOM/USDT", LTCUSDT: "LTC/USDT", FILUSDT: "FIL/USDT",
+    APTUSDT: "APT/USDT", ARBUSDT: "ARB/USDT", OPUSDT: "OP/USDT",
+    SUIUSDT: "SUI/USDT", PEPEUSDT: "PEPE/USDT",
     EURUSD: "EUR/USD", GBPUSD: "GBP/USD", XAUUSD: "XAU/USD", GBPJPY: "GBP/JPY",
   };
   const chartAssetDisplay = assetMap[chartAsset] ?? chartAsset;
@@ -87,7 +93,7 @@ export function Dashboard() {
       {/* Chart + Side Panel */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <PriceChart onAssetChange={(a, t) => { setChartAsset(a); setChartTf(t); }} />
+          <MultiChart onAssetChange={(a, t) => { setChartAsset(a); setChartTf(t); }} />
         </div>
         <div className="space-y-0">
           {/* Side tab selector */}

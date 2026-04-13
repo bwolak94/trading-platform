@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchAgentSignals,
   fetchAgentStatus,
+  fetchLearningData,
   startAgent,
   stopAgent,
 } from "../../api/client";
-import type { AgentSignal } from "../../api/client";
+import type { AgentSignal, LearningData } from "../../api/client";
 import { DayTradeHUD } from "./DayTradeHUD";
 
 function formatNumber(n: number): string {
@@ -332,6 +333,97 @@ function LearningLog() {
 
 // --------------- Main Panel ---------------
 
+function LearningDashboard() {
+  const { data: learning } = useQuery({
+    queryKey: ["learning-data"],
+    queryFn: fetchLearningData,
+    refetchInterval: 15_000,
+  });
+
+  if (!learning) return null;
+
+  const perf = learning.strategy_performance;
+  const blocked = Object.entries(learning.blocked_combos);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <h3 className="mb-3 text-sm font-semibold text-white">AI Learning Dashboard</h3>
+
+      {/* Best strategy per regime */}
+      <div className="mb-3 flex flex-wrap gap-2">
+        {Object.entries(learning.best_by_regime).map(([regime, strat]) => (
+          <div key={regime} className="rounded bg-background px-2 py-1 text-xs">
+            <span className="text-gray-500">{regime}: </span>
+            <span className={strat ? "text-bullish font-semibold" : "text-gray-600"}>{strat ?? "No data"}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Confidence multipliers */}
+      <div className="mb-3">
+        <span className="mb-1 block text-xs text-gray-500">Confidence Multipliers (Learned)</span>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(learning.confidence_multipliers).map(([strat, mult]) => (
+            <span key={strat} className={`rounded px-2 py-0.5 text-xs font-mono ${
+              mult > 1.1 ? "bg-bullish/20 text-bullish" : mult < 0.8 ? "bg-bearish/20 text-bearish" : "bg-background text-gray-400"
+            }`}>
+              {strat}: {mult}x
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Blocked combos */}
+      {blocked.length > 0 && (
+        <div className="mb-3">
+          <span className="mb-1 block text-xs text-bearish">Blocked (Learning Penalty)</span>
+          {blocked.map(([combo, until]) => (
+            <div key={combo} className="rounded bg-bearish/10 px-2 py-1 text-xs text-bearish">
+              {combo} — until {new Date(until).toLocaleTimeString()}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Strategy performance table */}
+      {perf.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-gray-500">
+              <tr>
+                <th className="pb-1 pr-3">Strategy</th>
+                <th className="pb-1 pr-3">Regime</th>
+                <th className="pb-1 pr-2">W</th>
+                <th className="pb-1 pr-2">L</th>
+                <th className="pb-1 pr-3">WR%</th>
+                <th className="pb-1 pr-3">PnL%</th>
+                <th className="pb-1 pr-3">Mult</th>
+                <th className="pb-1">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {perf.map((p, i) => (
+                <tr key={i} className="border-t border-border">
+                  <td className="py-1 pr-3 text-white">{p.strategy}</td>
+                  <td className="py-1 pr-3 text-gray-400">{p.regime}</td>
+                  <td className="py-1 pr-2 text-bullish">{p.wins}</td>
+                  <td className="py-1 pr-2 text-bearish">{p.losses}</td>
+                  <td className={`py-1 pr-3 font-mono ${p.win_rate >= 50 ? "text-bullish" : "text-bearish"}`}>{p.win_rate}%</td>
+                  <td className={`py-1 pr-3 font-mono ${p.total_pnl >= 0 ? "text-bullish" : "text-bearish"}`}>{p.total_pnl > 0 ? "+" : ""}{p.total_pnl}%</td>
+                  <td className={`py-1 pr-3 font-mono ${p.confidence_multiplier > 1 ? "text-bullish" : p.confidence_multiplier < 0.8 ? "text-bearish" : "text-gray-400"}`}>{p.confidence_multiplier}x</td>
+                  <td className="py-1">{p.blocked ? <span className="text-bearish">BLOCKED</span> : <span className="text-gray-500">OK</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {perf.length === 0 && <p className="text-xs text-gray-500">No trades completed yet — learning data will appear after trades close.</p>}
+    </div>
+  );
+}
+
 export function AgentPanel() {
   const { data: signals } = useQuery({
     queryKey: ["agent-signals"],
@@ -343,15 +435,16 @@ export function AgentPanel() {
 
   return (
     <div className="space-y-6">
+      {/* === Swing Trading Section === */}
+      <h2 className="text-lg font-bold text-white border-b border-border pb-2">Swing Trading Agent (4H)</h2>
       <StatusHeader />
       <PerformanceStats />
 
-      {/* Signals grid */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-white">Active Signals</h3>
+        <h3 className="mb-3 text-sm font-semibold text-white">Swing Trade Signals</h3>
         {entries.length === 0 ? (
           <p className="rounded-lg border border-border bg-surface p-6 text-center text-sm text-gray-500">
-            No active signals. The agent will generate signals during market scans.
+            No active swing signals.
           </p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -364,11 +457,13 @@ export function AgentPanel() {
 
       <LearningLog />
 
-      {/* Day Trading HUD */}
-      <div className="mt-8">
-        <h2 className="mb-4 text-lg font-bold text-white">Day Trading HUD (M1/M5/M15)</h2>
-        <DayTradeHUD />
-      </div>
+      {/* === Day Trading Section === */}
+      <h2 className="text-lg font-bold text-white border-b border-border pb-2 mt-8">Day Trading Agent (M1/M5/M15)</h2>
+      <DayTradeHUD />
+
+      {/* === AI Learning Dashboard === */}
+      <h2 className="text-lg font-bold text-white border-b border-border pb-2 mt-8">AI Learning Engine</h2>
+      <LearningDashboard />
     </div>
   );
 }

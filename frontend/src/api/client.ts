@@ -461,6 +461,28 @@ export async function stopAgent(): Promise<{ status: string }> {
   return data;
 }
 
+export interface LearningData {
+  strategy_performance: {
+    strategy: string;
+    regime: string;
+    wins: number;
+    losses: number;
+    win_rate: number;
+    total_pnl: number;
+    avg_reward: number;
+    confidence_multiplier: number;
+    blocked: boolean;
+  }[];
+  confidence_multipliers: Record<string, number>;
+  blocked_combos: Record<string, string>;
+  best_by_regime: Record<string, string | null>;
+}
+
+export async function fetchLearningData(): Promise<LearningData> {
+  const { data } = await api.get<LearningData>("/agent/learning");
+  return data;
+}
+
 // --- Day Trading ---
 
 export interface DayTradeSignal {
