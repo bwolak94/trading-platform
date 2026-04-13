@@ -194,12 +194,27 @@ class DayTradingEngine:
         if pnl < 0 and sig.confidence > 80:
             reward -= 1.0
 
+        # Feed the learning engine
+        from app.ai.agent.learning_engine import get_learning_engine
+        learning = get_learning_engine()
+        adjustments = learning.record_outcome(
+            strategy=sig.strategy_type, regime="INTRADAY",
+            pnl_pct=round(pnl, 2), reward=round(reward, 2),
+            hit_level=hit, market_snapshot={},
+        )
+
         lesson = f"{symbol} {sig.action} {hit} ({pnl:+.2f}%) via {sig.strategy_type}. Reward: {reward:+.1f}"
+        if adjustments.get("confidence_penalty"):
+            lesson += f" [CONFIDENCE REDUCED to {adjustments['new_multiplier']}x]"
+        if adjustments.get("blocked_until"):
+            lesson += f" [BLOCKED: {adjustments['block_reason']}]"
+
         self._trade_results.append({
             "symbol": symbol, "action": sig.action, "entry": sig.entry,
             "exit": exit_price, "pnl_pct": round(pnl, 2), "hit": hit,
             "reward": round(reward, 2), "lesson": lesson,
             "strategy": sig.strategy_type, "timestamp": datetime.now(timezone.utc).isoformat(),
+            "learning": adjustments,
         })
         self._lessons.append(lesson)
 

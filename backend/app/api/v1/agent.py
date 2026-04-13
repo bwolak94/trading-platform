@@ -87,3 +87,10 @@ async def get_day_trading_status() -> dict:
     from app.ai.agent.day_trading import get_day_trading_engine
     engine = get_day_trading_engine()
     return engine.get_status()
+
+
+@router.get("/learning")
+async def get_learning_summary() -> dict:
+    """Get the AI learning engine's full state — performance per strategy, multipliers, blocked combos."""
+    from app.ai.agent.learning_engine import get_learning_engine
+    return get_learning_engine().get_learning_summary()

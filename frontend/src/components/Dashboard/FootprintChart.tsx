@@ -45,7 +45,8 @@ function formatNumber(n: number): string {
 }
 
 function formatPrice(p: number): string {
-  if (p >= 1000) return p.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  if (p >= 10000) return p.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  if (p >= 100) return p.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   if (p >= 1) return p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return p.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 }

@@ -319,7 +319,19 @@ class TradingAgent:
         outcome.reward = self._reward_engine.calculate_reward(outcome)
         outcome.lessons = self._reward_engine.generate_lesson(outcome, {})
 
-        # Store outcome
+        # Feed the learning engine
+        from app.ai.agent.learning_engine import get_learning_engine
+        learning = get_learning_engine()
+        adjustments = learning.record_outcome(
+            strategy=signal.strategy_name,
+            regime=signal.regime,
+            pnl_pct=outcome.pnl_pct,
+            reward=outcome.reward,
+            hit_level=hit_level,
+            market_snapshot={},
+        )
+
+        # Store outcome with learning data
         self._trade_outcomes.append({
             "symbol": symbol, "action": signal.action,
             "entry": signal.entry, "exit": exit_price,
@@ -327,6 +339,7 @@ class TradingAgent:
             "reward": outcome.reward, "lessons": outcome.lessons,
             "strategy": signal.strategy_name, "confidence": signal.confidence,
             "timestamp": outcome.exit_time,
+            "learning": adjustments,
         })
         self._lessons_learned.append(outcome.lessons)
 
@@ -387,8 +400,16 @@ class TradingAgent:
         best_signal: TradeSignal | None = None
         best_confidence: float = 0
 
+        from app.ai.agent.learning_engine import get_learning_engine
+        learning = get_learning_engine()
+
         for name, strategy in self._strategies.items():
             compatible = strategy.is_compatible(regime.regime)
+
+            # Check if learning engine has blocked this combo
+            if learning.is_blocked(name, regime.regime):
+                logger.debug("LEARNING BLOCKED: %s in %s for %s", name, regime.regime, symbol)
+                continue
 
             # Generate signal
             signal = None
@@ -396,14 +417,18 @@ class TradingAgent:
                 try:
                     signal = strategy.generate_signal(symbol, "4h", featured, context)
                 except Exception as exc:
-                    logger.debug(
-                        "Strategy %s failed for %s: %s", name, symbol, exc,
-                    )
+                    logger.debug("Strategy %s failed for %s: %s", name, symbol, exc)
 
             # Build setup regardless
             setup = self._build_setup(name, featured, last, close, atr, regime.regime)
 
-            if signal and signal.confidence > best_confidence:
+            # Apply learned confidence adjustment
+            if signal:
+                signal_conf = learning.adjust_confidence(name, signal.confidence)
+            else:
+                signal_conf = 0
+
+            if signal and signal_conf > best_confidence:
                 best_confidence = signal.confidence
                 best_signal = self._signal_from_strategy(signal, setup, regime.regime)
             elif setup["readiness"] > 30 and not best_signal:

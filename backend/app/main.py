@@ -29,8 +29,8 @@ async def lifespan(app: FastAPI):
     of_manager = get_orderflow_manager()
     default_symbols = [
         ("BTCUSDT", 1.0, 60),
-        ("ETHUSDT", 0.1, 60),
-        ("SOLUSDT", 0.01, 60),
+        ("ETHUSDT", 1.0, 60),
+        ("SOLUSDT", 0.1, 60),
     ]
     for symbol, tick_size, window_sec in default_symbols:
         try:

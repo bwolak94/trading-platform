@@ -1,0 +1,72 @@
+{
+  "stats": {
+    "vwap_reversion:INTRADAY": {
+      "wins": 1,
+      "losses": 0,
+      "total_pnl": 0.15,
+      "avg_reward": 2.5,
+      "confidence_adj": 1.0
+    },
+    "liquidity_sweep:INTRADAY": {
+      "wins": 0,
+      "losses": 1,
+      "total_pnl": 0.0,
+      "avg_reward": 0.1,
+      "confidence_adj": 1.0
+    },
+    "delta_divergence:INTRADAY": {
+      "wins": 2,
+      "losses": 0,
+      "total_pnl": 0.3,
+      "avg_reward": 2.5,
+      "confidence_adj": 1.0
+    }
+  },
+  "multipliers": {
+    "trend_following": 1.0,
+    "mean_reversion": 1.0,
+    "smc": 1.0,
+    "volume_breakout": 1.0,
+    "liquidity_sweep": 1.0,
+    "ob_bounce": 1.0,
+    "vwap_reversion": 1.0,
+    "delta_divergence": 1.0
+  },
+  "blocked": {},
+  "win_patterns": [
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": 0.15,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-13T07:39:12.588614+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": 0.12,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-13T08:01:39.945819+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": 0.18,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-13T08:07:27.745220+00:00"
+    }
+  ],
+  "loss_patterns": [
+    {
+      "strategy": "liquidity_sweep",
+      "regime": "INTRADAY",
+      "pnl": 0.0,
+      "hit": "BE",
+      "snapshot": {},
+      "time": "2026-04-13T08:00:05.989327+00:00"
+    }
+  ]
+}
