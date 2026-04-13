@@ -181,23 +181,26 @@ class TradingAgent:
     # ------------------------------------------------------------------
 
     async def _scan_loop(self) -> None:
-        """Main loop: scan all pairs every SCAN_INTERVAL seconds."""
+        """Main loop: monitor prices every 5s, full scan every 30s."""
+        ticks = 0
         while self._running:
             try:
-                await self._scan_all_pairs()
+                # Monitor active trades every 5s
+                await self._monitor_active_trades()
+                # Full scan every 30s
+                ticks += 1
+                if ticks >= SCAN_INTERVAL // 5:
+                    await self._scan_new_pairs()
+                    ticks = 0
             except Exception as exc:
                 logger.error("Agent scan error: %s", exc, exc_info=True)
-            await asyncio.sleep(SCAN_INTERVAL)
+            await asyncio.sleep(5)
 
-    async def _scan_all_pairs(self) -> None:
-        """Scan all symbols: monitor active trades first, then look for new setups."""
+    async def _scan_new_pairs(self) -> None:
+        """Scan free pairs for new setups (every 30s)."""
         self._scan_count += 1
         self._last_scan_time = datetime.now(timezone.utc).isoformat()
 
-        # Step 1: Monitor active trades — check if TP/SL was hit
-        await self._monitor_active_trades()
-
-        # Step 2: Only scan pairs WITHOUT an active locked trade
         free_symbols = [s for s in SYMBOLS if s not in self._active_signals]
         if not free_symbols:
             logger.info("Scan #%d — all pairs have active trades, monitoring only", self._scan_count)

@@ -16,6 +16,7 @@ import { LiquidationHeatmap } from "./LiquidationHeatmap";
 import { LiveRegimePanel } from "./LiveRegimePanel";
 import { OrderFlowPanel } from "./OrderFlowPanel";
 import { PriceChart } from "./PriceChart";
+import { IntelligencePanel } from "./IntelligencePanel";
 import { TradingChat } from "./TradingChat";
 
 type SideTab = "orderflow" | "chat";
@@ -109,6 +110,9 @@ export function Dashboard() {
 
       {/* Live Regimes */}
       <LiveRegimePanel />
+
+      {/* Market Intelligence */}
+      <IntelligencePanel />
 
       {/* Heatmap + Liquidation Heatmap + Analysis */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

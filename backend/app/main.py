@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import agent, analyze, backtest, chat, market, settings, signals
+from app.api.v1 import agent, analyze, backtest, chat, intelligence, market, settings, signals
 from app.core.config import settings as app_settings
 from app.core.websocket import manager
 
@@ -86,7 +86,35 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to start ForexProvider: %s", exc)
 
+    # Start News Aggregator
+    from app.data.fetchers.news_aggregator import get_news_aggregator
+
+    news_aggregator = get_news_aggregator()
+    try:
+        await news_aggregator.start()
+        logger.info("News Aggregator started")
+    except Exception as exc:
+        logger.warning("Failed to start NewsAggregator: %s", exc)
+
+    # Start Whale Tracker
+    from app.data.fetchers.whale_tracker import get_whale_tracker
+
+    whale_tracker = get_whale_tracker()
+    try:
+        await whale_tracker.start()
+        logger.info("Whale Tracker started")
+    except Exception as exc:
+        logger.warning("Failed to start WhaleTracker: %s", exc)
+
     yield
+
+    # Shutdown Whale Tracker
+    logger.info("Shutting down Whale Tracker...")
+    await whale_tracker.stop()
+
+    # Shutdown News Aggregator
+    logger.info("Shutting down News Aggregator...")
+    await news_aggregator.stop()
 
     # Shutdown Forex Provider
     logger.info("Shutting down Forex Provider...")
@@ -149,6 +177,7 @@ app.include_router(backtest.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
 app.include_router(analyze.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(intelligence.router, prefix="/api/v1")
 
 
 # Health & status

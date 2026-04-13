@@ -17,7 +17,8 @@ from app.ai.strategies.smc_strategy import find_order_blocks, find_fair_value_ga
 logger = logging.getLogger(__name__)
 
 SYMBOL_MAP = {"BTC/USDT": "BTCUSDT", "ETH/USDT": "ETHUSDT", "SOL/USDT": "SOLUSDT"}
-SCAN_INTERVAL = 30
+MONITOR_INTERVAL = 5  # check TP/SL every 5 seconds
+SCAN_INTERVAL = 30  # full analysis every 30 seconds
 DAY_TRADE_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
 
@@ -92,18 +93,23 @@ class DayTradingEngine:
         logger.info("Day Trading Engine stopped")
 
     async def _scan_loop(self):
+        ticks_since_scan = 0
         while self._running:
             try:
-                await self._scan_all()
+                # Monitor active trades every 5s
+                await self._monitor_prices()
+
+                # Full scan every 30s (every 6th tick)
+                ticks_since_scan += 1
+                if ticks_since_scan >= SCAN_INTERVAL // MONITOR_INTERVAL:
+                    await self._scan_new_setups()
+                    ticks_since_scan = 0
             except Exception as exc:
                 logger.error("Day trade scan error: %s", exc)
-            await asyncio.sleep(SCAN_INTERVAL)
+            await asyncio.sleep(MONITOR_INTERVAL)
 
-    async def _scan_all(self):
-        self._scan_count += 1
-        self._last_scan = datetime.now(timezone.utc).isoformat()
-
-        # Step 1: Monitor active trades for TP/SL hits
+    async def _monitor_prices(self):
+        """Fast price check every 5s — detect TP/SL hits quickly."""
         for sym in list(self._active_signals.keys()):
             sig = self._active_signals[sym]
             try:
@@ -116,7 +122,11 @@ class DayTradingEngine:
             except Exception as exc:
                 logger.error("Day trade monitor error %s: %s", sym, exc)
 
-        # Step 2: Only scan free pairs
+    async def _scan_new_setups(self):
+        """Full analysis every 30s — only scan pairs without active trades."""
+        self._scan_count += 1
+        self._last_scan = datetime.now(timezone.utc).isoformat()
+
         free = [s for s in DAY_TRADE_SYMBOLS if s not in self._active_signals]
         if not free:
             return

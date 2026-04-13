@@ -506,6 +506,53 @@ export async function fetchDayTradeStatus(): Promise<Record<string, unknown>> {
   return data;
 }
 
+// --- Intelligence ---
+
+export interface NewsItemData {
+  title: string;
+  source: string;
+  url: string;
+  published: string;
+  sentiment: number;
+  is_emergency: boolean;
+  keywords: string[];
+  timestamp: string;
+}
+
+export interface SentimentSnapshot {
+  timestamp: string;
+  global_sentiment: number;
+  crypto_sentiment: number;
+  forex_sentiment: number;
+  emergency_active: boolean;
+  emergency_reason: string;
+  priority_alerts: string[];
+  impact_zones: string[];
+  news_count: number;
+}
+
+export interface WhaleData {
+  long_short_ratios: Record<string, { ratio: number; long_pct: number; short_pct: number; bias: string }>;
+  open_interest: Record<string, number>;
+  retail_sentiment: Record<string, number>;
+  whale_alerts: Record<string, unknown>[];
+}
+
+export async function fetchNews(limit: number = 50): Promise<{ news: NewsItemData[] }> {
+  const { data } = await api.get<{ news: NewsItemData[] }>("/intelligence/news", { params: { limit } });
+  return data;
+}
+
+export async function fetchSentimentSnapshot(): Promise<SentimentSnapshot> {
+  const { data } = await api.get<SentimentSnapshot>("/intelligence/sentiment");
+  return data;
+}
+
+export async function fetchWhaleData(): Promise<WhaleData> {
+  const { data } = await api.get<WhaleData>("/intelligence/whales");
+  return data;
+}
+
 // --- System ---
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {
