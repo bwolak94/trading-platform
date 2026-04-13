@@ -323,6 +323,107 @@ async def get_indicators(
     }
 
 
+@router.get("/orderflow")
+async def get_orderflow(
+    asset: str = Query(default="BTCUSDT", description="Trading pair symbol, e.g. BTCUSDT"),
+    timeframe: str = Query(default="1m", description="Aggregation window: 1m or 5m"),
+    limit: int = Query(default=30, ge=1, le=200, description="Number of recent windows to return"),
+) -> dict:
+    """Get order flow data: price clusters, delta, and imbalances.
+
+    Returns aggregated trade data bucketed into price levels within time
+    windows, along with cumulative delta and detected imbalances.
+    """
+    from app.data.fetchers.orderflow_engine import get_orderflow_manager
+
+    manager = get_orderflow_manager()
+    engine = manager.get_engine(asset.upper())
+
+    if engine is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No order flow engine running for {asset}. Available: {list(manager.list_engines().keys())}",
+        )
+
+    windows = engine.get_recent_windows(limit=limit)
+    imbalances = engine.detect_imbalances(threshold=3.0)
+    delta_history = list(engine.session_delta_history)[-limit:]
+
+    return {
+        "windows": windows,
+        "cumulative_delta": engine.get_cumulative_delta(),
+        "delta_history": delta_history,
+        "imbalances": imbalances,
+        "current_price": engine.current_price,
+    }
+
+
+@router.get("/orderflow/status")
+async def get_orderflow_status() -> dict:
+    """Get status of all running order flow engines."""
+    from app.data.fetchers.orderflow_engine import get_orderflow_manager
+
+    manager = get_orderflow_manager()
+    engines = manager.list_engines()
+    details = {}
+    for symbol, running in engines.items():
+        engine = manager.get_engine(symbol)
+        if engine:
+            details[symbol] = {
+                "running": running,
+                "cumulative_delta": engine.get_cumulative_delta(),
+                "current_price": engine.current_price,
+                "trade_count": engine._trade_count,
+                "window_count": len(engine._finalized_windows),
+            }
+    return {"engines": details}
+
+
+@router.get("/liquidation-heatmap")
+async def get_liquidation_heatmap(
+    asset: str = Query(default="BTCUSDT", description="Trading pair symbol, e.g. BTCUSDT"),
+    range_pct: float = Query(default=5.0, ge=0.1, le=50.0, description="Percentage above/below current price"),
+) -> dict:
+    """Return liquidation heatmap data with intensity values.
+
+    Returns bins with decayed liquidation intensity, recent force order
+    liquidations, open interest, theoretical liquidation levels, and
+    summary statistics.
+    """
+    from app.data.fetchers.liquidation_engine import get_liquidation_manager
+
+    manager = get_liquidation_manager()
+    engine = manager.engine
+
+    if engine is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Liquidation engine not running. Data may be unavailable.",
+        )
+
+    return engine.get_heatmap_data(symbol=asset.upper(), price_range_pct=range_pct)
+
+
+@router.get("/liquidations/recent")
+async def get_recent_liquidations(
+    asset: str = Query(default="BTCUSDT", description="Trading pair symbol, e.g. BTCUSDT"),
+    limit: int = Query(default=50, ge=1, le=500, description="Number of recent liquidations to return"),
+) -> list:
+    """Return recent force order liquidations."""
+    from app.data.fetchers.liquidation_engine import get_liquidation_manager
+
+    manager = get_liquidation_manager()
+    engine = manager.engine
+
+    if engine is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Liquidation engine not running.",
+        )
+
+    return engine.get_recent_liquidations(symbol=asset.upper(), limit=limit)
+
+
 @router.get("/calendar")
 async def get_macro_calendar() -> dict:
     """Get upcoming macro economic events.

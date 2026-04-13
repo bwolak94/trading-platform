@@ -81,6 +81,177 @@ def _signal_to_dict(signal: SignalResult) -> dict:
     }
 
 
+def _build_suggested_setup(
+    strategy_name: str, featured: pd.DataFrame, last: pd.Series, regime: str
+) -> dict:
+    """Build suggested entry/SL/TP levels for a strategy regardless of signal."""
+    close = round(float(last.get("close", 0)), 2)
+    atr = float(last.get("atr_14", 0))
+    ema20 = float(last.get("ema_20", close))
+    ema50 = float(last.get("ema_50", close))
+    ema200 = float(last.get("ema_200", close))
+    rsi = float(last.get("rsi_14", 50))
+    adx = float(last.get("adx_14", 0))
+    bb_upper = float(last.get("bb_upper", close + atr))
+    bb_lower = float(last.get("bb_lower", close - atr))
+    bb_mid = float(last.get("bb_middle", close))
+
+    if atr <= 0:
+        atr = close * 0.01
+
+    # Determine bias based on strategy logic
+    if strategy_name == "trend_following":
+        if ema20 > ema50 > ema200:
+            bias = "LONG"
+            entry = round(ema20, 2)  # pullback to EMA20
+            sl = round(min(ema50 - atr, float(last.get("low", close)) - atr * 0.5), 2)
+            conditions_met = [
+                ("EMA Alignment (20>50>200)", True),
+                ("ADX > 25", adx > 25),
+                ("RSI 45-70", 45 <= rsi <= 70),
+                ("Pullback to EMA20", abs(close - ema20) / atr < 1.5),
+                ("Volume > 1.2x avg", float(last.get("volume_vs_avg", 0)) > 1.2),
+            ]
+        elif ema20 < ema50 < ema200:
+            bias = "SHORT"
+            entry = round(ema20, 2)
+            sl = round(max(ema50 + atr, float(last.get("high", close)) + atr * 0.5), 2)
+            conditions_met = [
+                ("EMA Alignment (20<50<200)", True),
+                ("ADX > 25", adx > 25),
+                ("RSI 30-55", 30 <= rsi <= 55),
+                ("Pullback to EMA20", abs(close - ema20) / atr < 1.5),
+                ("Volume > 1.2x avg", float(last.get("volume_vs_avg", 0)) > 1.2),
+            ]
+        else:
+            bias = "LONG" if close > ema200 else "SHORT"
+            entry = close
+            sl = round(close - atr * 1.5, 2) if bias == "LONG" else round(close + atr * 1.5, 2)
+            conditions_met = [
+                ("EMA Alignment", False),
+                ("ADX > 25", adx > 25),
+                ("RSI in range", 30 <= rsi <= 70),
+            ]
+
+    elif strategy_name == "mean_reversion":
+        if rsi < 40 or close < bb_lower * 1.02:
+            bias = "LONG"
+            entry = round(bb_lower, 2)
+            sl = round(bb_lower - atr * 0.5, 2)
+            conditions_met = [
+                ("Price near lower BB", close <= bb_lower * 1.02),
+                ("RSI < 35", rsi < 35),
+                ("Bullish divergence", False),  # complex check
+                ("Reversal candle", float(last.get("close", 0)) > float(last.get("open", 0))),
+            ]
+        else:
+            bias = "SHORT"
+            entry = round(bb_upper, 2)
+            sl = round(bb_upper + atr * 0.5, 2)
+            conditions_met = [
+                ("Price near upper BB", close >= bb_upper * 0.98),
+                ("RSI > 65", rsi > 65),
+                ("Bearish divergence", False),
+                ("Reversal candle", float(last.get("close", 0)) < float(last.get("open", 0))),
+            ]
+
+    elif strategy_name == "smc":
+        from app.ai.strategies.smc_strategy import find_order_blocks
+        obs = find_order_blocks(featured, lookback=30)
+        bull_obs = [ob for ob in obs if ob["type"] == "bullish" and ob["mid"] < close]
+        bear_obs = [ob for ob in obs if ob["type"] == "bearish" and ob["mid"] > close]
+
+        if bull_obs:
+            ob = bull_obs[-1]
+            bias = "LONG"
+            entry = round(ob["mid"], 2)
+            sl = round(ob["low"] * 0.997, 2)
+            conditions_met = [
+                ("Bullish OB found", True),
+                (f"OB at ${ob['low']:.0f}-${ob['high']:.0f}", True),
+                ("Price retesting OB", ob["low"] <= close <= ob["high"]),
+                ("No supply zone above", len(bear_obs) == 0 or (bear_obs[0]["low"] - close) / close > 0.03),
+            ]
+        elif bear_obs:
+            ob = bear_obs[-1]
+            bias = "SHORT"
+            entry = round(ob["mid"], 2)
+            sl = round(ob["high"] * 1.003, 2)
+            conditions_met = [
+                ("Bearish OB found", True),
+                (f"OB at ${ob['low']:.0f}-${ob['high']:.0f}", True),
+                ("Price retesting OB", ob["low"] <= close <= ob["high"]),
+                ("No demand zone below", len(bull_obs) == 0 or (close - bull_obs[-1]["high"]) / close > 0.03),
+            ]
+        else:
+            bias = "LONG" if close > ema200 else "SHORT"
+            entry = close
+            sl = round(close - atr * 1.5, 2) if bias == "LONG" else round(close + atr * 1.5, 2)
+            conditions_met = [("No Order Blocks detected", False)]
+
+    elif strategy_name == "volume_breakout":
+        # Look for consolidation range
+        recent = featured.tail(15)
+        range_high = round(float(recent["high"].max()), 2)
+        range_low = round(float(recent["low"].min()), 2)
+        range_size = (range_high - range_low) / atr
+
+        if close > (range_high + range_low) / 2:
+            bias = "LONG"
+            entry = round(range_high, 2)
+            sl = round(range_low - atr, 2)
+        else:
+            bias = "SHORT"
+            entry = round(range_low, 2)
+            sl = round(range_high + atr, 2)
+
+        conditions_met = [
+            (f"Range: ${range_low:,.0f}-${range_high:,.0f}", True),
+            ("Range < 2x ATR (tight)", range_size < 2),
+            ("Volume spike > 2x", float(last.get("volume_vs_avg", 0)) > 2),
+            ("Breakout candle", close > range_high or close < range_low),
+        ]
+    else:
+        bias = "LONG"
+        entry = close
+        sl = round(close - atr * 1.5, 2)
+        conditions_met = []
+
+    # Calculate TP levels
+    risk = abs(entry - sl)
+    if risk <= 0:
+        risk = atr
+
+    if bias == "LONG":
+        tp1 = round(entry + risk * 1.5, 2)
+        tp2 = round(entry + risk * 3.0, 2)
+        tp3 = round(entry + risk * 5.0, 2)
+    else:
+        tp1 = round(entry - risk * 1.5, 2)
+        tp2 = round(entry - risk * 3.0, 2)
+        tp3 = round(entry - risk * 5.0, 2)
+
+    rr = round(abs(tp1 - entry) / risk, 1) if risk > 0 else 0
+
+    # Readiness score (how many conditions are met)
+    met_count = sum(1 for _, met in conditions_met if met)
+    total_count = max(len(conditions_met), 1)
+    readiness = round(met_count / total_count * 100)
+
+    return {
+        "bias": bias,
+        "entry": entry,
+        "stop_loss": sl,
+        "take_profit_1": tp1,
+        "take_profit_2": tp2,
+        "take_profit_3": tp3,
+        "risk_reward": rr,
+        "risk_usd_per_unit": round(risk, 2),
+        "readiness": readiness,
+        "conditions": [{"label": label, "met": met} for label, met in conditions_met],
+    }
+
+
 @router.get("/run")
 async def run_analysis(
     asset: str = Query(default="BTC/USDT", description="Trading pair"),
@@ -127,6 +298,7 @@ async def run_analysis(
             "supported_regimes": strat.supported_regimes,
             "signal": None,
             "reason": None,
+            "suggested_setup": None,
         }
 
         if not compatible:
@@ -142,6 +314,11 @@ async def run_analysis(
             except Exception as exc:
                 result_entry["reason"] = f"Error: {str(exc)}"
                 logger.error("Strategy %s error: %s", name, exc)
+
+        # Always provide a suggested setup with levels
+        result_entry["suggested_setup"] = _build_suggested_setup(
+            name, featured, last, regime.regime
+        )
 
         strategy_results.append(result_entry)
 

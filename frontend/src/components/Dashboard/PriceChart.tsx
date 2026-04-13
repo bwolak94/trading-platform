@@ -17,7 +17,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   fetchKlines,
   fetchIndicators,
+  fetchLiquidationHeatmap,
   type KlineData,
+  type LiquidationHeatmapData,
   type IndicatorData,
   type OrderBlockData,
   type FVGData,
@@ -75,11 +77,12 @@ const INDICATOR_GROUPS = [
     label: "Levels",
     items: [
       { id: "liquidations", label: "Liquidation Levels", color: "#ec4899" },
+      { id: "liq_heatmap", label: "Liquidation Heatmap", color: "#facc15" },
     ],
   },
 ] as const;
 
-type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations";
+type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap";
 
 function fmt(p: number): string {
   if (p >= 1000) return p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -250,8 +253,9 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
     const vs = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "volume" });
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    // Indicator line series refs
+    // Indicator line series refs + price line tracking
     const indicatorSeries: ISeriesApi<"Line">[] = [];
+    const priceLines: ReturnType<typeof cs.createPriceLine>[] = [];
 
     chart.subscribeCrosshairMove((p: MouseEventParams) => {
       if (!p.time || !p.seriesData) { setHover(null); return; }
@@ -281,14 +285,34 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
         setBar({ open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
       }
 
-      // Load indicators
+      // Load indicators + liquidation heatmap
+      const promises: Promise<void>[] = [];
+
       if (activeIndicators.size > 0) {
-        fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
-          if (cancelled) return;
-          drawIndicators(chart, cs, ind, activeIndicators, indicatorSeries);
+        const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap");
+        if (hasNonLiqHeatmap) {
+          promises.push(
+            fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
+              if (cancelled) return;
+              drawIndicators(chart, cs, ind, activeIndicators, indicatorSeries, priceLines);
+            })
+          );
+        }
+        if (activeIndicators.has("liq_heatmap")) {
+          promises.push(
+            fetchLiquidationHeatmap(asset, 5).then((liqData) => {
+              if (cancelled) return;
+              drawLiquidationHeatmap(cs, liqData, priceLines);
+            }).catch(() => {})
+          );
+        }
+      }
+
+      if (promises.length > 0) {
+        Promise.all(promises).then(() => {
           chart.timeScale().fitContent();
           setLoading(false);
-        }).catch(() => { setLoading(false); });
+        }).catch(() => setLoading(false));
       } else {
         chart.timeScale().fitContent();
         setLoading(false);
@@ -320,17 +344,34 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
     }
     connectWs();
 
-    // Refresh indicators every 60s
+    // Refresh indicators every 30s — clear old lines first
     const indInterval = setInterval(() => {
       if (cancelled || activeIndicators.size === 0) return;
-      fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
-        if (cancelled) return;
-        // Update existing indicator series data
-        indicatorSeries.forEach((s) => { try { chart.removeSeries(s); } catch { /* */ } });
-        indicatorSeries.length = 0;
-        drawIndicators(chart, cs, ind, activeIndicators, indicatorSeries);
-      }).catch(() => {});
-    }, 60_000);
+
+      // Remove all old price lines
+      for (const pl of priceLines) {
+        try { cs.removePriceLine(pl); } catch { /* */ }
+      }
+      priceLines.length = 0;
+
+      // Remove old line series
+      indicatorSeries.forEach((s) => { try { chart.removeSeries(s); } catch { /* */ } });
+      indicatorSeries.length = 0;
+
+      const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap");
+      if (hasNonLiqHeatmap) {
+        fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
+          if (cancelled) return;
+          drawIndicators(chart, cs, ind, activeIndicators, indicatorSeries, priceLines);
+        }).catch(() => {});
+      }
+      if (activeIndicators.has("liq_heatmap")) {
+        fetchLiquidationHeatmap(asset, 5).then((liqData) => {
+          if (cancelled) return;
+          drawLiquidationHeatmap(cs, liqData, priceLines);
+        }).catch(() => {});
+      }
+    }, 30_000);
 
     return () => {
       cancelled = true;
@@ -383,6 +424,7 @@ function drawIndicators(
   data: IndicatorData,
   active: Set<IndicatorId>,
   seriesRefs: ISeriesApi<"Line">[],
+  plRefs: ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[] = [],
 ) {
   // EMA 20
   if (active.has("ema_20") && data.ema_20?.length) {
@@ -428,20 +470,20 @@ function drawIndicators(
       const color = isLong ? "#00d4aa" : "#ff4757";
       const label = `${ob.signal} OB`;
       // Upper boundary
-      candleSeries.createPriceLine({
+      plRefs.push(candleSeries.createPriceLine({
         price: ob.high, color, lineWidth: 2, lineStyle: LineStyle.Solid,
         axisLabelVisible: true, title: label,
-      });
+      }));
       // Lower boundary
-      candleSeries.createPriceLine({
+      plRefs.push(candleSeries.createPriceLine({
         price: ob.low, color, lineWidth: 2, lineStyle: LineStyle.Solid,
         axisLabelVisible: false, title: "",
-      });
+      }));
       // Midpoint (entry zone)
-      candleSeries.createPriceLine({
+      plRefs.push(candleSeries.createPriceLine({
         price: ob.mid, color: color + "80", lineWidth: 1, lineStyle: LineStyle.Dashed,
         axisLabelVisible: false, title: `Entry ${ob.distance_pct.toFixed(1)}%`,
-      });
+      }));
     }
   }
   // Fair Value Gaps — LONG/SHORT with fill status
@@ -451,14 +493,14 @@ function drawIndicators(
       const isLong = fvg.signal === "LONG";
       const color = isLong ? "#22c55e" : fvg.signal === "SHORT" ? "#ef4444" : "#6b7280";
       const label = `${fvg.signal} FVG ${fvg.size_pct.toFixed(2)}%`;
-      candleSeries.createPriceLine({
+      plRefs.push(candleSeries.createPriceLine({
         price: fvg.top, color, lineWidth: 1, lineStyle: LineStyle.LargeDashed,
         axisLabelVisible: true, title: label,
-      });
-      candleSeries.createPriceLine({
+      }));
+      plRefs.push(candleSeries.createPriceLine({
         price: fvg.bottom, color, lineWidth: 1, lineStyle: LineStyle.LargeDashed,
         axisLabelVisible: false, title: "",
-      });
+      }));
     }
   }
   // Liquidation levels — with leverage labels
@@ -467,12 +509,75 @@ function drawIndicators(
       const isLong = liq.side === "long";
       const color = isLong ? "#ec4899" : "#06b6d4";
       const opacity = Math.max(0.3, liq.intensity / 100);
-      candleSeries.createPriceLine({
+      plRefs.push(candleSeries.createPriceLine({
         price: liq.price, color: color + Math.round(opacity * 255).toString(16).padStart(2, "0"),
         lineWidth: 1, lineStyle: LineStyle.SparseDotted,
         axisLabelVisible: liq.leverage <= 25,
         title: `${liq.leverage}x ${liq.side.toUpperCase()} LIQ`,
-      });
+      }));
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Draw Liquidation Heatmap on chart (magma color scale)             */
+/* ------------------------------------------------------------------ */
+
+function fmtUsd(v: number): string {
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function intensityToColor(intensity: number): string {
+  // Magma scale: deep purple → magenta → neon yellow
+  if (intensity > 0.8) return "#facc15";  // neon yellow — extreme
+  if (intensity > 0.6) return "#f97316";  // orange — very high
+  if (intensity > 0.4) return "#d946ef";  // magenta — high
+  if (intensity > 0.2) return "#7c3aed";  // purple — medium
+  return "#2d1b69";                        // deep purple — low
+}
+
+function drawLiquidationHeatmap(
+  candleSeries: ISeriesApi<"Candlestick">,
+  data: LiquidationHeatmapData,
+  plRefs: ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[],
+) {
+  // Draw bins as price lines with magma colors
+  if (data.bins && data.bins.length > 0) {
+    for (const bin of data.bins) {
+      if (bin.intensity < 0.1) continue;
+      const color = intensityToColor(bin.intensity);
+      const totalLabel = fmtUsd(bin.total_usd);
+      const lineWidth = bin.intensity > 0.6 ? 3 : bin.intensity > 0.3 ? 2 : 1;
+
+      plRefs.push(candleSeries.createPriceLine({
+        price: bin.price_mid,
+        color,
+        lineWidth,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: bin.intensity > 0.4,
+        title: bin.intensity > 0.3 ? `🔥 ${totalLabel}` : "",
+      }));
+    }
+  }
+
+  // Draw theoretical levels with leverage labels
+  if (data.theoretical_levels && data.theoretical_levels.length > 0) {
+    for (const level of data.theoretical_levels) {
+      const isLong = level.side === "long";
+      const importance = level.leverage >= 50 ? 3 : level.leverage >= 25 ? 2 : 1;
+      const color = isLong ? "#ec489980" : "#06b6d480";
+
+      plRefs.push(candleSeries.createPriceLine({
+        price: level.price,
+        color,
+        lineWidth: importance,
+        lineStyle: level.leverage >= 50 ? LineStyle.Dashed : LineStyle.SparseDotted,
+        axisLabelVisible: level.leverage >= 25,
+        title: `${level.leverage}x ${isLong ? "LONG" : "SHORT"} ${fmtUsd(level.estimated_usd)}`,
+      }));
     }
   }
 }

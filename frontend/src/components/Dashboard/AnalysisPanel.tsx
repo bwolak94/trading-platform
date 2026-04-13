@@ -126,9 +126,8 @@ export function AnalysisPanel() {
                 </div>
                 <p className="text-xs text-gray-500">{s.description}</p>
 
-                {s.signal ? (
+                {s.signal && (
                   <div className="mt-2 space-y-2">
-                    {/* Levels */}
                     <div className="flex flex-wrap gap-3 text-xs">
                       <span className="text-gray-400">Entry: <span className="font-mono text-white">${s.signal.entry_price.toLocaleString()}</span></span>
                       <span className="text-gray-400">SL: <span className="font-mono text-bearish">${s.signal.stop_loss.toLocaleString()}</span></span>
@@ -136,7 +135,6 @@ export function AnalysisPanel() {
                       <span className="text-gray-400">TP2: <span className="font-mono text-bullish">${s.signal.take_profit_2.toLocaleString()}</span></span>
                       <span className="text-gray-400">R/R: <span className="font-mono text-white">{s.signal.risk_reward.toFixed(1)}</span></span>
                     </div>
-                    {/* Factors */}
                     <div className="flex flex-wrap gap-2">
                       {s.signal.factors.map((f, i) => (
                         <span key={i} className={`rounded px-2 py-0.5 text-xs ${f.label === "BULLISH" ? "bg-bullish/10 text-bullish" : "bg-bearish/10 text-bearish"}`}>
@@ -145,9 +143,14 @@ export function AnalysisPanel() {
                       ))}
                     </div>
                   </div>
-                ) : (
+                )}
+
+                {!s.signal && s.reason && (
                   <p className="mt-1 text-xs text-gray-500 italic">{s.reason}</p>
                 )}
+
+                {/* Suggested Setup — always visible */}
+                {s.suggested_setup && <SuggestedSetup setup={s.suggested_setup} strategyName={s.name} />}
               </div>
             ))}
           </div>
@@ -166,6 +169,83 @@ function Stat({ label, value, color = "text-white" }: { label: string; value: st
     <div className="rounded bg-surface px-2 py-1">
       <span className="block text-gray-500">{label}</span>
       <span className={`font-mono font-semibold ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+interface SetupData {
+  bias: string;
+  entry: number;
+  stop_loss: number;
+  take_profit_1: number;
+  take_profit_2: number;
+  take_profit_3: number;
+  risk_reward: number;
+  risk_usd_per_unit: number;
+  readiness: number;
+  conditions: { label: string; met: boolean }[];
+}
+
+function SuggestedSetup({ setup, strategyName }: { setup: SetupData; strategyName: string }) {
+  const isLong = setup.bias === "LONG";
+  const readinessColor =
+    setup.readiness >= 80 ? "text-bullish" :
+    setup.readiness >= 50 ? "text-yellow-400" : "text-gray-400";
+
+  return (
+    <div className="mt-3 rounded border border-border bg-surface p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-400">Suggested Setup</span>
+          <span className={`rounded px-2 py-0.5 text-xs font-bold ${isLong ? "bg-bullish/20 text-bullish" : "bg-bearish/20 text-bearish"}`}>
+            {setup.bias}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Readiness:</span>
+          <span className={`font-mono text-sm font-bold ${readinessColor}`}>{setup.readiness}%</span>
+        </div>
+      </div>
+
+      {/* Entry / SL / TP levels */}
+      <div className="mb-2 grid grid-cols-3 gap-1.5 text-xs lg:grid-cols-6">
+        <div className="rounded bg-background px-2 py-1.5">
+          <span className="block text-gray-500">Entry</span>
+          <span className="font-mono font-semibold text-white">${setup.entry.toLocaleString()}</span>
+        </div>
+        <div className="rounded bg-background px-2 py-1.5">
+          <span className="block text-gray-500">Stop Loss</span>
+          <span className="font-mono font-semibold text-bearish">${setup.stop_loss.toLocaleString()}</span>
+        </div>
+        <div className="rounded bg-background px-2 py-1.5">
+          <span className="block text-gray-500">TP1 (1.5R)</span>
+          <span className="font-mono font-semibold text-bullish">${setup.take_profit_1.toLocaleString()}</span>
+        </div>
+        <div className="rounded bg-background px-2 py-1.5">
+          <span className="block text-gray-500">TP2 (3R)</span>
+          <span className="font-mono font-semibold text-bullish">${setup.take_profit_2.toLocaleString()}</span>
+        </div>
+        <div className="rounded bg-background px-2 py-1.5">
+          <span className="block text-gray-500">TP3 (5R)</span>
+          <span className="font-mono font-semibold text-bullish">${setup.take_profit_3.toLocaleString()}</span>
+        </div>
+        <div className="rounded bg-background px-2 py-1.5">
+          <span className="block text-gray-500">R/R</span>
+          <span className="font-mono font-semibold text-white">{setup.risk_reward}</span>
+        </div>
+      </div>
+
+      {/* Conditions checklist */}
+      <div className="space-y-0.5">
+        {setup.conditions.map((c, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className={c.met ? "text-bullish" : "text-gray-600"}>
+              {c.met ? "✓" : "✗"}
+            </span>
+            <span className={c.met ? "text-gray-300" : "text-gray-500"}>{c.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

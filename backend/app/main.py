@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import analyze, backtest, chat, market, settings, signals
+from app.api.v1 import agent, analyze, backtest, chat, market, settings, signals
 from app.core.config import settings as app_settings
 from app.core.websocket import manager
 
@@ -22,7 +22,63 @@ async def lifespan(app: FastAPI):
         format='{"time":"%(asctime)s","level":"%(levelname)s","module":"%(module)s","message":"%(message)s"}',
     )
     logger.info("AI Trading Navigator starting up")
+
+    # Start Order Flow engines for default symbols
+    from app.data.fetchers.orderflow_engine import get_orderflow_manager
+
+    of_manager = get_orderflow_manager()
+    default_symbols = [
+        ("BTCUSDT", 1.0, 60),
+        ("ETHUSDT", 0.1, 60),
+        ("SOLUSDT", 0.01, 60),
+    ]
+    for symbol, tick_size, window_sec in default_symbols:
+        try:
+            await of_manager.start_engine(
+                symbol=symbol,
+                tick_size=tick_size,
+                window_seconds=window_sec,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to start OrderFlowEngine for %s: %s", symbol, exc,
+            )
+
+    logger.info("Order Flow engines started for %s", list(of_manager.list_engines().keys()))
+
+    # Start Liquidation Engine (single engine covers all symbols via !forceOrder@arr)
+    from app.data.fetchers.liquidation_engine import get_liquidation_manager
+
+    liq_manager = get_liquidation_manager()
+    try:
+        await liq_manager.start()
+        logger.info("Liquidation engine started")
+    except Exception as exc:
+        logger.warning("Failed to start LiquidationEngine: %s", exc)
+
+    # Start AI Trading Agent
+    from app.ai.agent.trading_agent import get_trading_agent
+
+    trading_agent = get_trading_agent()
+    try:
+        await trading_agent.start()
+        logger.info("AI Trading Agent started")
+    except Exception as exc:
+        logger.warning("Failed to start TradingAgent: %s", exc)
+
     yield
+
+    # Shutdown AI Trading Agent
+    logger.info("Shutting down AI Trading Agent...")
+    await trading_agent.stop()
+
+    # Shutdown Liquidation Engine
+    logger.info("Shutting down Liquidation engine...")
+    await liq_manager.stop()
+
+    # Shutdown Order Flow engines
+    logger.info("Shutting down Order Flow engines...")
+    await of_manager.stop_all()
     logger.info("AI Trading Navigator shutting down")
 
 
@@ -58,6 +114,7 @@ async def error_handling_middleware(request: Request, call_next):
 
 
 # API routers
+app.include_router(agent.router, prefix="/api/v1")
 app.include_router(signals.router, prefix="/api/v1")
 app.include_router(market.router, prefix="/api/v1")
 app.include_router(backtest.router, prefix="/api/v1")

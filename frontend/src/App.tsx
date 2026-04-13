@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { AgentPanel } from "./components/Dashboard/AgentPanel";
 import { Dashboard } from "./components/Dashboard/Dashboard";
+import { FootprintChart } from "./components/Dashboard/FootprintChart";
 import { BacktestPage } from "./pages/Backtest";
 
 const queryClient = new QueryClient({
@@ -12,7 +14,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type Page = "dashboard" | "backtest";
+type Page = "dashboard" | "orderflow" | "backtest" | "agent";
 
 function App() {
   const [page, setPage] = useState<Page>("dashboard");
@@ -33,9 +35,19 @@ function App() {
                 onClick={() => setPage("dashboard")}
               />
               <NavButton
+                label="Order Flow"
+                active={page === "orderflow"}
+                onClick={() => setPage("orderflow")}
+              />
+              <NavButton
                 label="Backtest"
                 active={page === "backtest"}
                 onClick={() => setPage("backtest")}
+              />
+              <NavButton
+                label="AI Agent"
+                active={page === "agent"}
+                onClick={() => setPage("agent")}
               />
             </div>
           </div>
@@ -44,7 +56,9 @@ function App() {
         {/* Content */}
         <main className="mx-auto max-w-7xl p-6">
           {page === "dashboard" && <Dashboard />}
+          {page === "orderflow" && <FootprintChart />}
           {page === "backtest" && <BacktestPage />}
+          {page === "agent" && <AgentPanel />}
         </main>
       </div>
     </QueryClientProvider>
