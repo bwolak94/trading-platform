@@ -72,3 +72,18 @@ async def record_outcome(
         "reward": outcome.reward,
         "lessons": outcome.lessons,
     }
+
+
+# --- Day Trading Endpoints ---
+
+@router.get("/day-trading/signals")
+async def get_day_trading_signals() -> dict:
+    from app.ai.agent.day_trading import get_day_trading_engine
+    engine = get_day_trading_engine()
+    return {"signals": engine.get_active_signals()}
+
+@router.get("/day-trading/status")
+async def get_day_trading_status() -> dict:
+    from app.ai.agent.day_trading import get_day_trading_engine
+    engine = get_day_trading_engine()
+    return engine.get_status()

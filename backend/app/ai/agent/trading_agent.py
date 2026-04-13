@@ -143,12 +143,13 @@ class TradingAgent:
         self._scan_task: asyncio.Task | None = None
 
         # State
-        self._active_signals: dict[str, TradeSignal] = {}  # symbol -> best signal
+        self._active_signals: dict[str, TradeSignal] = {}  # symbol -> LOCKED signal
         self._signal_history: deque = deque(maxlen=500)
         self._trade_outcomes: deque = deque(maxlen=200)
         self._lessons_learned: deque = deque(maxlen=100)
         self._scan_count = 0
         self._last_scan_time: str = ""
+        self._be_activated: set[str] = set()  # symbols where SL moved to BE
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -189,25 +190,151 @@ class TradingAgent:
             await asyncio.sleep(SCAN_INTERVAL)
 
     async def _scan_all_pairs(self) -> None:
-        """Scan all symbols in parallel."""
-        tasks = [self._analyze_pair(symbol) for symbol in SYMBOLS]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
+        """Scan all symbols: monitor active trades first, then look for new setups."""
         self._scan_count += 1
         self._last_scan_time = datetime.now(timezone.utc).isoformat()
 
-        for symbol, result in zip(SYMBOLS, results):
+        # Step 1: Monitor active trades — check if TP/SL was hit
+        await self._monitor_active_trades()
+
+        # Step 2: Only scan pairs WITHOUT an active locked trade
+        free_symbols = [s for s in SYMBOLS if s not in self._active_signals]
+        if not free_symbols:
+            logger.info("Scan #%d — all pairs have active trades, monitoring only", self._scan_count)
+            return
+
+        tasks = [self._analyze_pair(symbol) for symbol in free_symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for symbol, result in zip(free_symbols, results):
             if isinstance(result, Exception):
                 logger.error("Scan failed for %s: %s", symbol, result)
                 continue
             if result and result.confidence >= MIN_CONFIDENCE:
                 self._active_signals[symbol] = result
                 self._signal_history.append(result.to_dict())
+                logger.info(
+                    "NEW SIGNAL: %s %s @ $%s (conf=%s%%, strategy=%s)",
+                    symbol, result.action, result.entry,
+                    result.confidence, result.strategy_name,
+                )
 
         logger.info(
-            "Scan #%d complete — %d active signals",
-            self._scan_count,
-            len(self._active_signals),
+            "Scan #%d — %d active trades, %d free pairs scanned",
+            self._scan_count, len(self._active_signals), len(free_symbols),
+        )
+
+    async def _monitor_active_trades(self) -> None:
+        """Check current price against active signals' TP/SL levels."""
+        if not self._active_signals:
+            return
+
+        for symbol in list(self._active_signals.keys()):
+            signal = self._active_signals[symbol]
+            try:
+                current_price = await self._get_current_price(symbol)
+                if current_price <= 0:
+                    continue
+
+                hit = self._check_trade_levels(signal, current_price)
+                if hit:
+                    self._close_trade(symbol, current_price, hit)
+            except Exception as exc:
+                logger.error("Monitor error for %s: %s", symbol, exc)
+
+    async def _get_current_price(self, symbol: str) -> float:
+        """Fetch current price from Binance."""
+        binance_sym = SYMBOL_MAP.get(symbol, symbol.replace("/", ""))
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    "https://api.binance.com/api/v3/ticker/price",
+                    params={"symbol": binance_sym},
+                )
+                resp.raise_for_status()
+                return float(resp.json().get("price", 0))
+        except Exception:
+            return 0.0
+
+    def _check_trade_levels(self, signal: TradeSignal, price: float) -> str | None:
+        """Check if price hit any TP/SL level.
+
+        Returns a hit level string ONLY for trade-closing events.
+        TP1 only activates Break Even — it does NOT close the trade.
+        """
+        is_long = signal.action == "LONG"
+        symbol = signal.symbol
+
+        # Check SL (or BE if activated)
+        effective_sl = signal.entry if symbol in self._be_activated else signal.stop_loss
+        if is_long and price <= effective_sl:
+            return "BE" if symbol in self._be_activated else "SL"
+        if not is_long and price >= effective_sl:
+            return "BE" if symbol in self._be_activated else "SL"
+
+        # Check TP3 first (closes trade)
+        tp_levels = signal.tp_levels
+        if len(tp_levels) >= 3:
+            if (is_long and price >= tp_levels[2]) or (not is_long and price <= tp_levels[2]):
+                return "TP3"
+
+        # Check TP2 (closes trade)
+        if len(tp_levels) >= 2:
+            if (is_long and price >= tp_levels[1]) or (not is_long and price <= tp_levels[1]):
+                return "TP2"
+
+        # Check TP1 — does NOT close trade, only activates BE (once)
+        if len(tp_levels) >= 1 and symbol not in self._be_activated:
+            if (is_long and price >= tp_levels[0]) or (not is_long and price <= tp_levels[0]):
+                self._be_activated.add(symbol)
+                logger.info(
+                    "TP1 hit for %s — SL moved to Break Even ($%s). Waiting for TP2/TP3 or BE.",
+                    symbol, signal.entry,
+                )
+
+        return None
+
+    def _close_trade(self, symbol: str, exit_price: float, hit_level: str) -> None:
+        """Close a trade, calculate reward, record lesson, remove from active."""
+        signal = self._active_signals.get(symbol)
+        if not signal:
+            return
+
+        # Calculate P&L
+        if signal.action == "LONG":
+            pnl_pct = (exit_price - signal.entry) / signal.entry * 100
+        else:
+            pnl_pct = (signal.entry - exit_price) / signal.entry * 100
+
+        # Calculate reward
+        outcome = TradeOutcome(
+            signal=signal, exit_price=exit_price,
+            exit_time=datetime.now(timezone.utc).isoformat(),
+            pnl_pct=round(pnl_pct, 2), hit_level=hit_level,
+            reward=0, lessons="",
+        )
+        outcome.reward = self._reward_engine.calculate_reward(outcome)
+        outcome.lessons = self._reward_engine.generate_lesson(outcome, {})
+
+        # Store outcome
+        self._trade_outcomes.append({
+            "symbol": symbol, "action": signal.action,
+            "entry": signal.entry, "exit": exit_price,
+            "pnl_pct": outcome.pnl_pct, "hit_level": hit_level,
+            "reward": outcome.reward, "lessons": outcome.lessons,
+            "strategy": signal.strategy_name, "confidence": signal.confidence,
+            "timestamp": outcome.exit_time,
+        })
+        self._lessons_learned.append(outcome.lessons)
+
+        # Remove from active + BE tracking
+        self._active_signals.pop(symbol, None)
+        self._be_activated.discard(symbol)
+
+        emoji = "✅" if pnl_pct > 0 else "❌"
+        logger.info(
+            "%s TRADE CLOSED: %s %s | %s | PnL: %.2f%% | Reward: %.2f | %s",
+            emoji, symbol, signal.action, hit_level, pnl_pct, outcome.reward, outcome.lessons,
         )
 
     # ------------------------------------------------------------------

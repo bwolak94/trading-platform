@@ -103,13 +103,43 @@ async def get_onchain_events(
     return [OnChainEventResponse.model_validate(e) for e in events]
 
 
+FOREX_SYMBOLS = {"EURUSD", "GBPUSD", "XAUUSD", "GBPJPY", "EUR/USD", "GBP/USD", "XAU/USD", "GBP/JPY"}
+FOREX_MAP = {"EURUSD": "EUR/USD", "GBPUSD": "GBP/USD", "XAUUSD": "XAU/USD", "GBPJPY": "GBP/JPY"}
+
+
 @router.get("/klines")
 async def get_klines(
-    asset: str = Query(default="BTCUSDT", description="Trading pair symbol, e.g. BTCUSDT"),
-    interval: str = Query(default="1h", description="Kline interval, e.g. 1m, 5m, 15m, 1h, 4h, 1d"),
-    limit: int = Query(default=300, ge=1, le=1000, description="Number of candles to return"),
+    asset: str = Query(default="BTCUSDT", description="Trading pair symbol"),
+    interval: str = Query(default="1h", description="Kline interval"),
+    limit: int = Query(default=300, ge=1, le=1000, description="Number of candles"),
 ) -> list[dict]:
-    """Proxy Binance kline data to avoid CORS issues on the frontend."""
+    """Get kline data — routes to Binance for crypto, Forex provider for FX/Gold."""
+    # Check if this is a forex pair
+    normalized = asset.upper().replace("/", "")
+    forex_key = FOREX_MAP.get(normalized) or (asset if asset in FOREX_SYMBOLS else None)
+
+    if forex_key:
+        # Load Yahoo historical first (for deep chart history)
+        yahoo_candles = await _fetch_yahoo_historical(forex_key, interval, limit)
+
+        # Then append any recent tick-based candles from our forex provider
+        from app.data.fetchers.forex_provider import get_forex_provider
+        provider = get_forex_provider()
+        tick_candles = provider.get_candles(forex_key, interval, 50)
+
+        if yahoo_candles and tick_candles:
+            # Merge: use Yahoo for history, tick candles for most recent
+            last_yahoo_time = yahoo_candles[-1]["time"] if yahoo_candles else 0
+            new_ticks = [c for c in tick_candles if c["time"] > last_yahoo_time]
+            combined = yahoo_candles + new_ticks
+            return combined[-limit:]
+        elif yahoo_candles:
+            return yahoo_candles
+        elif tick_candles:
+            return tick_candles
+        return []
+
+    # Binance crypto klines
     binance_url = "https://api.binance.com/api/v3/klines"
     params = {"symbol": asset, "interval": interval, "limit": limit}
 
@@ -131,7 +161,7 @@ async def get_klines(
     raw_klines: list[list] = response.json()
     return [
         {
-            "time": int(k[0]) // 1000,  # Convert ms to unix seconds
+            "time": int(k[0]) // 1000,
             "open": float(k[1]),
             "high": float(k[2]),
             "low": float(k[3]),
@@ -140,6 +170,52 @@ async def get_klines(
         }
         for k in raw_klines
     ]
+
+
+async def _fetch_yahoo_historical(symbol: str, interval: str, limit: int) -> list[dict]:
+    """Fetch historical candles from Yahoo Finance for forex pairs."""
+    yahoo_map = {"EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "XAU/USD": "GC=F", "GBP/JPY": "GBPJPY=X"}
+    yahoo_sym = yahoo_map.get(symbol, symbol.replace("/", "") + "=X")
+    yahoo_interval = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "60m", "4h": "60m", "1d": "1d"}.get(interval, "60m")
+    yahoo_range = {"1m": "1d", "5m": "5d", "15m": "5d", "1h": "1mo", "4h": "3mo", "1d": "1y"}.get(interval, "1mo")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}",
+                params={"interval": yahoo_interval, "range": yahoo_range},
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            result = data.get("chart", {}).get("result", [])
+            if not result:
+                return []
+
+            timestamps = result[0].get("timestamp", [])
+            quotes = result[0].get("indicators", {}).get("quote", [{}])[0]
+            opens = quotes.get("open", [])
+            highs = quotes.get("high", [])
+            lows = quotes.get("low", [])
+            closes = quotes.get("close", [])
+            volumes = quotes.get("volume", [])
+
+            candles = []
+            for i in range(len(timestamps)):
+                if opens[i] is None or closes[i] is None:
+                    continue
+                candles.append({
+                    "time": timestamps[i],
+                    "open": round(opens[i], 5),
+                    "high": round(highs[i], 5),
+                    "low": round(lows[i], 5),
+                    "close": round(closes[i], 5),
+                    "volume": volumes[i] or 0,
+                })
+            return candles[-limit:]
+    except Exception:
+        return []
 
 
 @router.get("/indicators")
@@ -422,6 +498,40 @@ async def get_recent_liquidations(
         )
 
     return engine.get_recent_liquidations(symbol=asset.upper(), limit=limit)
+
+
+@router.get("/forex/status")
+async def get_forex_status() -> dict:
+    """Get forex provider status — prices, tick counts, deltas."""
+    from app.data.fetchers.forex_provider import get_forex_provider
+    return get_forex_provider().get_status()
+
+
+@router.get("/forex/klines")
+async def get_forex_klines(
+    asset: str = Query(default="EUR/USD"),
+    interval: str = Query(default="1m"),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> list[dict]:
+    """Get aggregated forex candles from tick data."""
+    from app.data.fetchers.forex_provider import get_forex_provider
+    return get_forex_provider().get_candles(asset, interval, limit)
+
+
+@router.get("/forex/ticks")
+async def get_forex_ticks(
+    asset: str = Query(default="EUR/USD"),
+    limit: int = Query(default=500, ge=1, le=10000),
+) -> dict:
+    """Get raw forex ticks with tick delta."""
+    from app.data.fetchers.forex_provider import get_forex_provider
+    provider = get_forex_provider()
+    return {
+        "symbol": asset,
+        "ticks": provider.get_ticks(asset, limit),
+        "current_price": provider.get_current_price(asset),
+        "cumulative_delta": provider.get_cumulative_delta(asset),
+    }
 
 
 @router.get("/calendar")

@@ -30,6 +30,15 @@ export function Dashboard() {
   } = useAppStore();
 
   const [sideTab, setSideTab] = useState<SideTab>("orderflow");
+  const [chartAsset, setChartAsset] = useState("BTCUSDT");
+  const [chartTf, setChartTf] = useState("1h");
+
+  // Map display format for components that expect "BTC/USDT" style
+  const assetMap: Record<string, string> = {
+    BTCUSDT: "BTC/USDT", ETHUSDT: "ETH/USDT", SOLUSDT: "SOL/USDT",
+    EURUSD: "EUR/USD", GBPUSD: "GBP/USD", XAUUSD: "XAU/USD", GBPJPY: "GBP/JPY",
+  };
+  const chartAssetDisplay = assetMap[chartAsset] ?? chartAsset;
 
   const signalsQuery = useQuery({ queryKey: ["activeSignals"], queryFn: fetchActiveSignals, refetchInterval: 30_000 });
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
@@ -77,7 +86,7 @@ export function Dashboard() {
       {/* Chart + Side Panel */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <PriceChart />
+          <PriceChart onAssetChange={(a, t) => { setChartAsset(a); setChartTf(t); }} />
         </div>
         <div className="space-y-0">
           {/* Side tab selector */}
@@ -93,7 +102,7 @@ export function Dashboard() {
               AI Chat
             </button>
           </div>
-          {sideTab === "orderflow" && <OrderFlowPanel asset="BTC/USDT" timeframe="1m" />}
+          {sideTab === "orderflow" && <OrderFlowPanel asset={chartAssetDisplay} timeframe="1m" />}
           {sideTab === "chat" && <TradingChat />}
         </div>
       </div>
@@ -103,8 +112,8 @@ export function Dashboard() {
 
       {/* Heatmap + Liquidation Heatmap + Analysis */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Heatmap asset="BTCUSDT" interval="4h" />
-        <LiquidationHeatmap asset="BTCUSDT" />
+        <Heatmap asset={chartAsset} interval={chartTf} />
+        <LiquidationHeatmap asset={chartAsset} />
       </div>
 
       {/* Analysis */}

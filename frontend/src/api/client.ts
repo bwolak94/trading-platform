@@ -461,6 +461,51 @@ export async function stopAgent(): Promise<{ status: string }> {
   return data;
 }
 
+// --- Day Trading ---
+
+export interface DayTradeSignal {
+  symbol: string;
+  action: "LONG" | "SHORT" | "HOLD";
+  entry: number;
+  stop_loss: number;
+  tp_levels: number[];
+  be_trigger: number;
+  confidence: number;
+  hold_time_minutes: number;
+  reasoning: string;
+  strategy_type: string;
+  session_levels: {
+    session_high: number; session_low: number;
+    pdh: number; pdl: number;
+    vwap: number; vwap_upper: number; vwap_lower: number;
+  };
+  regime: string;
+  readiness: number;
+  conditions: { label: string; met: boolean }[];
+  ui_elements: {
+    sl_box: { price_top: number; price_bottom: number; color: string; label: string };
+    tp_boxes: { price_top: number; price_bottom: number; color: string; label: string }[];
+    entry_line: { price: number; color: string; label: string };
+    be_line: { price: number; color: string; label: string };
+    vwap_line: { price: number; color: string; label: string };
+    pdh_line: { price: number; label: string };
+    pdl_line: { price: number; label: string };
+    confidence_label: { value: number; text: string };
+    hold_time_label: { value: number; text: string };
+  };
+  timestamp: string;
+}
+
+export async function fetchDayTradeSignals(): Promise<Record<string, DayTradeSignal>> {
+  const { data } = await api.get<{ signals: Record<string, DayTradeSignal> }>("/agent/day-trading/signals");
+  return data.signals;
+}
+
+export async function fetchDayTradeStatus(): Promise<Record<string, unknown>> {
+  const { data } = await api.get<Record<string, unknown>>("/agent/day-trading/status");
+  return data;
+}
+
 // --- System ---
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {

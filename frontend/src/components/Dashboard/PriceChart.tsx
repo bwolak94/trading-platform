@@ -25,17 +25,18 @@ import {
   type FVGData,
 } from "../../api/client";
 
-const BINANCE_ASSETS = [
+const CRYPTO_ASSETS = [
   { label: "BTC/USDT", value: "BTCUSDT" },
   { label: "ETH/USDT", value: "ETHUSDT" },
   { label: "SOL/USDT", value: "SOLUSDT" },
 ] as const;
-const NON_BINANCE_ASSETS = [
+const FOREX_ASSETS = [
   { label: "EUR/USD", value: "EURUSD" },
   { label: "GBP/USD", value: "GBPUSD" },
-  { label: "XAU/USD", value: "XAUUSD" },
+  { label: "XAU/USD (Gold)", value: "XAUUSD" },
+  { label: "GBP/JPY", value: "GBPJPY" },
 ] as const;
-const ALL_ASSETS = [...BINANCE_ASSETS, ...NON_BINANCE_ASSETS];
+const ALL_ASSETS = [...CRYPTO_ASSETS, ...FOREX_ASSETS];
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
 const CANDLE_COUNTS = [100, 200, 300, 500, 1000] as const;
 
@@ -43,7 +44,7 @@ type Asset = (typeof ALL_ASSETS)[number]["value"];
 type Timeframe = (typeof TIMEFRAMES)[number];
 type CandleCountOption = (typeof CANDLE_COUNTS)[number];
 
-const BINANCE_SET = new Set<string>(BINANCE_ASSETS.map((a) => a.value));
+const CRYPTO_SET = new Set<string>(CRYPTO_ASSETS.map((a) => a.value));
 
 interface OHLCVInfo {
   open: number; high: number; low: number; close: number;
@@ -95,14 +96,18 @@ function fmtVol(v: number): string {
   return v.toFixed(2);
 }
 
-export function PriceChart() {
+interface PriceChartProps {
+  onAssetChange?: (asset: string, timeframe: string) => void;
+}
+
+export function PriceChart({ onAssetChange }: PriceChartProps = {}) {
   const [asset, setAsset] = useState<Asset>("BTCUSDT");
   const [tf, setTf] = useState<Timeframe>("1h");
   const [count, setCount] = useState<CandleCountOption>(300);
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorId>>(new Set(["ema_20", "ema_50"]));
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false);
 
-  const isNonBinance = !BINANCE_SET.has(asset);
+  const isCrypto = CRYPTO_SET.has(asset);
   const label = ALL_ASSETS.find((a) => a.value === asset)?.label ?? asset;
 
   const toggleIndicator = (id: IndicatorId) => {
@@ -121,7 +126,7 @@ export function PriceChart() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
         <div className="flex items-center gap-2">
-          <select value={asset} onChange={(e) => setAsset(e.target.value as Asset)}
+          <select value={asset} onChange={(e) => { const v = e.target.value as Asset; setAsset(v); onAssetChange?.(v, tf); }}
             className="rounded border border-border bg-background px-3 py-1.5 text-sm font-semibold text-white focus:outline-none"
             aria-label="Select pair">
             {ALL_ASSETS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
@@ -129,7 +134,7 @@ export function PriceChart() {
 
           <div className="flex gap-0.5">
             {TIMEFRAMES.map((t) => (
-              <button key={t} type="button" onClick={() => setTf(t)}
+              <button key={t} type="button" onClick={() => { setTf(t); onAssetChange?.(asset, t); }}
                 className={`rounded px-2.5 py-1 text-xs font-medium ${tf === t ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
                 aria-label={`${t} timeframe`}>{t.toUpperCase()}</button>
             ))}
@@ -185,20 +190,14 @@ export function PriceChart() {
         </div>
       )}
 
-      {/* Chart */}
-      {isNonBinance ? (
-        <div className="flex h-[550px] items-center justify-center bg-background text-gray-500">
-          <p>{label} — Data not available</p>
-        </div>
-      ) : (
-        <ChartCanvas key={`${asset}-${tf}-${count}-${indicatorKey}`}
-          asset={asset} timeframe={tf} candleLimit={count}
-          activeIndicators={activeIndicators} />
-      )}
+      {/* Chart — all pairs now supported */}
+      <ChartCanvas key={`${asset}-${tf}-${count}-${indicatorKey}`}
+        asset={asset} timeframe={tf} candleLimit={count}
+        activeIndicators={activeIndicators} />
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border px-4 py-1.5 text-xs text-gray-500">
-        <span>Binance Spot</span>
+        <span>{isCrypto ? "Binance Spot" : "Forex / Yahoo Finance"}</span>
         <div className="flex gap-2">
           {Array.from(activeIndicators).map((id) => {
             const ind = INDICATOR_GROUPS.flatMap((g) => g.items).find((i) => i.id === id);
@@ -319,30 +318,50 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
       }
     }).catch(() => setLoading(false));
 
-    // WebSocket
-    const wsUrl = `wss://stream.binance.com:9443/ws/${asset.toLowerCase()}@kline_${timeframe}`;
+    // Live updates — WebSocket for crypto, polling for forex
+    const isCryptoPair = ["BTCUSDT", "ETHUSDT", "SOLUSDT"].includes(asset.toUpperCase());
     let ws: WebSocket | null = null;
     let reconTimer: ReturnType<typeof setTimeout> | null = null;
-    function connectWs() {
-      if (cancelled) return;
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.e !== "kline") return;
-          const k = msg.k;
-          const time = Math.floor(k.t / 1000) as Time;
-          const o = parseFloat(k.o), h = parseFloat(k.h), l = parseFloat(k.l), c = parseFloat(k.c), vol = parseFloat(k.v);
-          cs.update({ time, open: o, high: h, low: l, close: c });
-          vs.update({ time, value: vol, color: c >= o ? "rgba(0,212,170,0.3)" : "rgba(255,71,87,0.3)" });
-          const ch = c - (prevClose || o);
-          setBar({ open: o, high: h, low: l, close: c, volume: vol, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
-        } catch { /* */ }
-      };
-      ws.onclose = () => { if (!cancelled) reconTimer = setTimeout(connectWs, 3000); };
-      ws.onerror = () => ws?.close();
+    let forexPollTimer: ReturnType<typeof setInterval> | null = null;
+
+    if (isCryptoPair) {
+      // Binance WebSocket for crypto
+      const wsUrl = `wss://stream.binance.com:9443/ws/${asset.toLowerCase()}@kline_${timeframe}`;
+      function connectWs() {
+        if (cancelled) return;
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg.e !== "kline") return;
+            const k = msg.k;
+            const time = Math.floor(k.t / 1000) as Time;
+            const o = parseFloat(k.o), h = parseFloat(k.h), l = parseFloat(k.l), c = parseFloat(k.c), vol = parseFloat(k.v);
+            cs.update({ time, open: o, high: h, low: l, close: c });
+            vs.update({ time, value: vol, color: c >= o ? "rgba(0,212,170,0.3)" : "rgba(255,71,87,0.3)" });
+            const ch = c - (prevClose || o);
+            setBar({ open: o, high: h, low: l, close: c, volume: vol, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
+          } catch { /* */ }
+        };
+        ws.onclose = () => { if (!cancelled) reconTimer = setTimeout(connectWs, 3000); };
+        ws.onerror = () => ws?.close();
+      }
+      connectWs();
+    } else {
+      // Forex polling — fetch latest candle every 1 second
+      forexPollTimer = setInterval(() => {
+        if (cancelled) return;
+        fetchKlines(asset, timeframe, 2).then((klines) => {
+          if (cancelled || klines.length === 0) return;
+          const last = klines[klines.length - 1]!;
+          const time = last.time as Time;
+          cs.update({ time, open: last.open, high: last.high, low: last.low, close: last.close });
+          vs.update({ time, value: last.volume, color: last.close >= last.open ? "rgba(0,212,170,0.3)" : "rgba(255,71,87,0.3)" });
+          const ch = last.close - (prevClose || last.open);
+          setBar({ open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
+        }).catch(() => {});
+      }, 1000);
     }
-    connectWs();
 
     // Refresh indicators every 30s — clear old lines first
     const indInterval = setInterval(() => {
@@ -376,6 +395,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators }: {
     return () => {
       cancelled = true;
       clearInterval(indInterval);
+      if (forexPollTimer) clearInterval(forexPollTimer);
       window.removeEventListener("resize", onResize);
       if (reconTimer) clearTimeout(reconTimer);
       ws?.close();

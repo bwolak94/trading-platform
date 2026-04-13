@@ -66,7 +66,35 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to start TradingAgent: %s", exc)
 
+    # Start Day Trading Engine
+    from app.ai.agent.day_trading import get_day_trading_engine
+
+    day_trading_engine = get_day_trading_engine()
+    try:
+        await day_trading_engine.start()
+        logger.info("Day Trading Engine started")
+    except Exception as exc:
+        logger.warning("Failed to start DayTradingEngine: %s", exc)
+
+    # Start Forex Provider
+    from app.data.fetchers.forex_provider import get_forex_provider
+
+    forex_provider = get_forex_provider()
+    try:
+        await forex_provider.start()
+        logger.info("Forex Provider started")
+    except Exception as exc:
+        logger.warning("Failed to start ForexProvider: %s", exc)
+
     yield
+
+    # Shutdown Forex Provider
+    logger.info("Shutting down Forex Provider...")
+    await forex_provider.stop()
+
+    # Shutdown Day Trading Engine
+    logger.info("Shutting down Day Trading Engine...")
+    await day_trading_engine.stop()
 
     # Shutdown AI Trading Agent
     logger.info("Shutting down AI Trading Agent...")

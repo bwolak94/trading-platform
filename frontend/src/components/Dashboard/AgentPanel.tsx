@@ -6,6 +6,7 @@ import {
   stopAgent,
 } from "../../api/client";
 import type { AgentSignal } from "../../api/client";
+import { DayTradeHUD } from "./DayTradeHUD";
 
 function formatNumber(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -362,6 +363,12 @@ export function AgentPanel() {
       </div>
 
       <LearningLog />
+
+      {/* Day Trading HUD */}
+      <div className="mt-8">
+        <h2 className="mb-4 text-lg font-bold text-white">Day Trading HUD (M1/M5/M15)</h2>
+        <DayTradeHUD />
+      </div>
     </div>
   );
 }
