@@ -44,5 +44,15 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
+    def validate_production(self) -> list[str]:
+        """Check for insecure defaults in production."""
+        warnings: list[str] = []
+        if self.ENVIRONMENT == "production":
+            if self.SECRET_KEY == "change-me-in-production":
+                warnings.append("SECRET_KEY is still the default!")
+            if not self.ANTHROPIC_API_KEY:
+                warnings.append("ANTHROPIC_API_KEY not set")
+        return warnings
+
 
 settings = Settings()

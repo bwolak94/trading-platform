@@ -82,24 +82,31 @@ class NewsAggregator:
                 logger.error("News fetch error: %s", exc)
             await asyncio.sleep(FETCH_INTERVAL)
 
+    async def _fetch_single_feed(self, client: httpx.AsyncClient, source_name: str, url: str) -> None:
+        """Fetch and process a single RSS feed."""
+        try:
+            resp = await client.get(url, headers={"User-Agent": "TradingAI/1.0"})
+            if resp.status_code == 200:
+                items = self._parse_rss(resp.text, source_name)
+                for item in items:
+                    if item.url not in self._seen_urls:
+                        self._seen_urls.add(item.url)
+                        self._news.appendleft(item)
+                        if item.is_emergency:
+                            self._emergency_active = True
+                            self._emergency_reason = f"EMERGENCY: {item.title}"
+                            self._priority_alerts.appendleft(item.title)
+                            logger.warning("EMERGENCY NEWS: %s", item.title)
+        except Exception as exc:
+            logger.debug("Feed %s failed: %s", source_name, exc)
+
     async def _fetch_all_feeds(self):
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            for source_name, url in RSS_FEEDS.items():
-                try:
-                    resp = await client.get(url, headers={"User-Agent": "TradingAI/1.0"})
-                    if resp.status_code == 200:
-                        items = self._parse_rss(resp.text, source_name)
-                        for item in items:
-                            if item.url not in self._seen_urls:
-                                self._seen_urls.add(item.url)
-                                self._news.appendleft(item)
-                                if item.is_emergency:
-                                    self._emergency_active = True
-                                    self._emergency_reason = f"EMERGENCY: {item.title}"
-                                    self._priority_alerts.appendleft(item.title)
-                                    logger.warning("EMERGENCY NEWS: %s", item.title)
-                except Exception as exc:
-                    logger.debug("Feed %s failed: %s", source_name, exc)
+            tasks = [
+                self._fetch_single_feed(client, name, url)
+                for name, url in RSS_FEEDS.items()
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def _parse_rss(self, xml_text: str, source: str) -> list[NewsItem]:
         items = []
@@ -138,8 +145,8 @@ class NewsAggregator:
                         is_emergency=emergency, keywords_found=keywords,
                         timestamp=datetime.now(timezone.utc),
                     ))
-        except ET.ParseError:
-            pass
+        except ET.ParseError as exc:
+            logger.debug("RSS parse error for %s: %s", source, exc)
         return items
 
     def _score_headline(self, title: str) -> float:

@@ -1,6 +1,7 @@
 """Signal Aggregator — weighted multi-source scoring and signal emission."""
 
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -106,7 +107,11 @@ class SignalAggregator:
         raw_signals: list[SignalResult] = []
         for strategy in compatible:
             try:
+                start = time.monotonic()
                 signal = strategy.generate_signal(asset, timeframe, market_data, context)
+                elapsed = time.monotonic() - start
+                if elapsed > 10:
+                    logger.warning("Strategy %s took %.1fs for %s", strategy.name, elapsed, asset)
                 if signal:
                     raw_signals.append(signal)
             except Exception as exc:

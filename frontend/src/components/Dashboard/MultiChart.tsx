@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PriceChart } from "./PriceChart";
 import { fetchAgentSignals, fetchDayTradeSignals } from "../../api/client";
@@ -38,7 +38,18 @@ function getChartCount(mode: LayoutMode): number {
 }
 
 export function MultiChart({ onAssetChange }: { onAssetChange?: (asset: string, tf: string) => void }) {
-  const [layout, setLayout] = useState<LayoutMode>("1");
+  const [layout, setLayoutState] = useState<LayoutMode>(() => {
+    const saved = localStorage.getItem("chart-layout");
+    return (saved as LayoutMode) || "1";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("chart-layout", layout);
+  }, [layout]);
+
+  const setLayout = (mode: LayoutMode) => {
+    setLayoutState(mode);
+  };
 
   // Fetch active agent signals
   const { data: swingSignals } = useQuery({

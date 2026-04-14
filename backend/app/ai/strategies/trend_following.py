@@ -96,6 +96,13 @@ class TrendFollowingStrategy(BaseStrategy):
             return None
         factors.append({"name": "Volume Confirmation", "weight": 0.15, "score": min(volume_ratio / 2, 1.0), "label": "BULLISH"})
 
+        # ADX divergence check: ADX declining while price moves strongly = weakening trend
+        if len(df) >= 5:
+            adx_slope = df["adx_14"].iloc[-1] - df["adx_14"].iloc[-5]
+            price_slope = (df["close"].iloc[-1] - df["close"].iloc[-5]) / df["close"].iloc[-5]
+            if adx_slope < 0 and abs(price_slope) > 0.02:
+                factors.append({"name": "ADX Divergence Warning", "weight": -0.1, "score": 0.3, "label": "CAUTION"})
+
         return {"factors": factors, "direction": "LONG"}
 
     def _check_short(
@@ -137,6 +144,13 @@ class TrendFollowingStrategy(BaseStrategy):
         if volume_ratio < self.VOLUME_MULTIPLIER:
             return None
         factors.append({"name": "Volume Confirmation", "weight": 0.15, "score": min(volume_ratio / 2, 1.0), "label": "BEARISH"})
+
+        # ADX divergence check: ADX declining while price moves strongly = weakening trend
+        if len(df) >= 5:
+            adx_slope = df["adx_14"].iloc[-1] - df["adx_14"].iloc[-5]
+            price_slope = (df["close"].iloc[-1] - df["close"].iloc[-5]) / df["close"].iloc[-5]
+            if adx_slope < 0 and abs(price_slope) > 0.02:
+                factors.append({"name": "ADX Divergence Warning", "weight": -0.1, "score": 0.3, "label": "CAUTION"})
 
         return {"factors": factors, "direction": "SHORT"}
 

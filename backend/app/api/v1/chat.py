@@ -18,6 +18,7 @@ from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks, find_
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
 from app.core.config import settings
+from app.core.symbols import ALL_SYMBOLS, VALID_TIMEFRAMES
 from app.data.processors.feature_engineer import compute_features
 
 logger = logging.getLogger(__name__)
@@ -216,6 +217,12 @@ def _extract_annotations(text: str) -> list[dict[str, Any]]:
 @router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Process a chat message with full market context RAG."""
+    valid_assets = set(ALL_SYMBOLS)
+    if request.asset not in valid_assets:
+        raise HTTPException(status_code=400, detail=f"Invalid asset. Valid: {sorted(valid_assets)}")
+    if request.timeframe not in VALID_TIMEFRAMES:
+        raise HTTPException(status_code=400, detail=f"Invalid timeframe. Valid: {sorted(VALID_TIMEFRAMES)}")
+
     if not settings.ANTHROPIC_API_KEY or settings.ANTHROPIC_API_KEY == "your_anthropic_api_key":
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured. Add your key to .env file.")
 

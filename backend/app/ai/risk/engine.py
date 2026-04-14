@@ -14,6 +14,14 @@ from app.models.user_settings import UserSettings
 
 logger = logging.getLogger(__name__)
 
+CORRELATED_GROUPS = {
+    "large_cap": {"BTC/USDT", "ETH/USDT"},
+    "alt_l1": {"SOL/USDT", "AVAX/USDT", "DOT/USDT", "ATOM/USDT", "ADA/USDT"},
+    "defi": {"UNI/USDT", "LINK/USDT", "AAVE/USDT"},
+    "meme": {"DOGE/USDT", "PEPE/USDT"},
+    "l2": {"ARB/USDT", "OP/USDT", "MATIC/USDT"},
+}
+
 
 @dataclass
 class PositionSize:
@@ -92,6 +100,29 @@ class RiskEngine:
             position_pct=round(position_pct, 2),
             risk_amount=round(risk_amount, 2),
         )
+
+    def get_correlation_discount(self, symbol: str, active_positions: dict[str, str]) -> float:
+        """Returns a multiplier (0.3-1.0) based on correlated open positions."""
+        my_group = None
+        for group, symbols in CORRELATED_GROUPS.items():
+            if symbol in symbols:
+                my_group = group
+                break
+        if not my_group:
+            return 1.0
+
+        same_dir_count = 0
+        for pos_symbol, pos_direction in active_positions.items():
+            if pos_symbol != symbol and pos_symbol in CORRELATED_GROUPS.get(my_group, set()):
+                same_dir_count += 1
+
+        if same_dir_count >= 3:
+            return 0.3  # Heavy penalty
+        if same_dir_count >= 2:
+            return 0.5
+        if same_dir_count >= 1:
+            return 0.7
+        return 1.0
 
     def calculate_position_size_volatility_adjusted(
         self,

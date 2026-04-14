@@ -1,6 +1,7 @@
 """Feature engineering — computes technical indicators from OHLCV data."""
 
 import logging
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -11,9 +12,40 @@ from ta.volume import OnBalanceVolumeIndicator
 
 logger = logging.getLogger(__name__)
 
+_feature_cache: dict[str, tuple[float, pd.DataFrame]] = {}
+CACHE_TTL = 15  # seconds
+
 
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     """Compute all technical indicators on an OHLCV DataFrame.
+
+    Expects columns: open, high, low, close, volume.
+    Returns the DataFrame with new indicator columns appended.
+    Rows with insufficient history for the longest window are dropped.
+    Uses an in-memory cache with 15s TTL to avoid redundant recomputation.
+    """
+    # Generate cache key from shape and last close price
+    cache_key = f"{len(df)}_{df.iloc[-1]['close'] if not df.empty else 0}"
+    now = datetime.now(timezone.utc).timestamp()
+
+    if cache_key in _feature_cache:
+        cached_time, cached_df = _feature_cache[cache_key]
+        if now - cached_time < CACHE_TTL:
+            return cached_df.copy()
+
+    result = _compute_features_impl(df)
+    _feature_cache[cache_key] = (now, result)
+
+    # Evict old entries
+    if len(_feature_cache) > 100:
+        oldest = min(_feature_cache, key=lambda k: _feature_cache[k][0])
+        del _feature_cache[oldest]
+
+    return result
+
+
+def _compute_features_impl(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute all technical indicators (internal implementation).
 
     Expects columns: open, high, low, close, volume.
     Returns the DataFrame with new indicator columns appended.
@@ -39,6 +71,17 @@ def _validate_columns(df: pd.DataFrame) -> None:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
+
+    # Check data quality
+    if df.isna().sum().sum() / df.size > 0.1:
+        logger.warning("DataFrame has >10%% NaN values, results may be unreliable")
+    if (df["volume"] == 0).sum() > len(df) * 0.5:
+        logger.warning("More than 50%% of candles have zero volume")
+    # Validate OHLC order
+    bad_ohlc = ((df["low"] > df["close"]) | (df["low"] > df["open"]) |
+                (df["high"] < df["close"]) | (df["high"] < df["open"])).sum()
+    if bad_ohlc > 0:
+        logger.warning("%d candles have invalid OHLC order (low > close or high < open)", bad_ohlc)
 
 
 def _add_trend_indicators(df: pd.DataFrame) -> None:

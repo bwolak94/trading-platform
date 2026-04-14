@@ -265,12 +265,19 @@ async def _run_signal_pipeline():
                     )
                     position_pct = ps.position_pct
 
-                # Save signal to DB
+                # Save signal to DB with dynamic expiration based on regime
+                regime_label = signal.factors[0].get("label", "UNKNOWN") if signal.factors else "UNKNOWN"
+                EXPIRY_BY_REGIME = {
+                    "TREND_BULL": 48, "TREND_BEAR": 48,
+                    "CONSOLIDATION": 12, "HIGH_VOL_CHOPPY": 6,
+                }
+                expiry_hours = EXPIRY_BY_REGIME.get(regime_label, 24)
+
                 db_signal = SignalModel(
                     asset=signal.asset,
                     direction=signal.direction,
                     confidence=Decimal(str(signal.confidence)),
-                    regime=signal.factors[0].get("label", "UNKNOWN") if signal.factors else "UNKNOWN",
+                    regime=regime_label,
                     entry_price=Decimal(str(signal.entry_price)),
                     stop_loss=Decimal(str(signal.stop_loss)),
                     take_profit_1=Decimal(str(signal.take_profit_1)),
@@ -282,7 +289,7 @@ async def _run_signal_pipeline():
                     sentiment_score=Decimal(str(sentiment_score)),
                     factors=signal.factors,
                     status="ACTIVE",
-                    expires_at=now + timedelta(hours=24),
+                    expires_at=now + timedelta(hours=expiry_hours),
                 )
                 session.add(db_signal)
                 await session.commit()

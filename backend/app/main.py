@@ -1,6 +1,8 @@
 """FastAPI application entry point."""
 
 import logging
+import time as _time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -22,6 +24,11 @@ async def lifespan(app: FastAPI):
         format='{"time":"%(asctime)s","level":"%(levelname)s","module":"%(module)s","message":"%(message)s"}',
     )
     logger.info("AI Trading Navigator starting up")
+
+    # Validate production configuration
+    prod_warnings = app_settings.validate_production()
+    for w in prod_warnings:
+        logger.warning("CONFIG WARNING: %s", w)
 
     # Start Order Flow engines for default symbols
     from app.data.fetchers.orderflow_engine import get_orderflow_manager
@@ -153,6 +160,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Rate limiting middleware
+_rate_limits: dict[str, list[float]] = defaultdict(list)
+EXPENSIVE_PATHS = {"/api/v1/analyze/run", "/api/v1/chat", "/api/v1/backtest/run"}
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Enforce per-IP rate limits: 10 req/min for expensive endpoints, 60 req/min otherwise."""
+    client_ip = request.client.host if request.client else "unknown"
+    path = request.url.path
+    now = _time.time()
+    key = f"{client_ip}:{path}"
+
+    # Clean old entries
+    _rate_limits[key] = [t for t in _rate_limits[key] if now - t < 60]
+
+    limit = 10 if path in EXPENSIVE_PATHS else 60
+    if len(_rate_limits[key]) >= limit:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "rate_limited", "detail": f"Max {limit} requests/minute"},
+        )
+
+    _rate_limits[key].append(now)
+    return await call_next(request)
+
+
+# Request logging middleware
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """Log request method, path, status, and duration for non-health endpoints."""
+    start = _time.time()
+    response = await call_next(request)
+    duration = round((_time.time() - start) * 1000, 1)
+    if not request.url.path.startswith("/api/v1/health"):
+        logger.info('{"method":"%s","path":"%s","status":%d,"duration_ms":%.1f}',
+            request.method, request.url.path, response.status_code, duration)
+    return response
 
 
 # Error handling middleware

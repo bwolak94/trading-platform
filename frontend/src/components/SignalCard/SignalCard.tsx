@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import type { Signal } from "../../types";
 
 const directionConfig = {
@@ -32,19 +33,33 @@ export function SignalCard({ signal, isNew }: SignalCardProps) {
 
       {/* Confidence */}
       <div className="mb-4">
-        <div className="mb-1 flex items-center justify-between text-sm">
-          <span className="text-gray-400">Confidence</span>
-          <span className={`font-mono font-bold ${config.color}`}>
-            {signal.confidence.toFixed(0)}%
-          </span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-background">
-          <div
-            className={`h-full rounded-full ${
-              signal.direction === "LONG" ? "bg-bullish" : "bg-bearish"
-            }`}
-            style={{ width: `${Math.min(signal.confidence, 100)}%` }}
-          />
+        <div className="group relative">
+          <div className="mb-1 flex items-center justify-between text-sm">
+            <span className="text-gray-400">Confidence</span>
+            <span className={`font-mono font-bold ${config.color}`}>
+              {signal.confidence.toFixed(0)}%
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-background">
+            <div
+              className={`h-full rounded-full ${
+                signal.direction === "LONG" ? "bg-bullish" : "bg-bearish"
+              }`}
+              style={{ width: `${Math.min(signal.confidence, 100)}%` }}
+            />
+          </div>
+          {/* Confidence tooltip on hover */}
+          <div className="absolute left-0 top-full z-30 mt-1 hidden w-64 rounded border border-border bg-surface p-2 shadow-lg group-hover:block">
+            <p className="mb-1 text-xs text-gray-500">Score Breakdown:</p>
+            {signal.factors.map((f, i) => (
+              <div key={i} className="flex justify-between text-xs">
+                <span className="text-gray-300">{f.name}</span>
+                <span className="font-mono text-white">
+                  {(f.weight * f.score * 100).toFixed(0)}pts ({(f.weight * 100).toFixed(0)}%)
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
         <p className="mt-1 text-sm text-gray-300">
           Probability of {signal.direction === "LONG" ? "upward" : "downward"}{" "}
@@ -83,7 +98,12 @@ export function SignalCard({ signal, isNew }: SignalCardProps) {
           R/R {signal.risk_reward.toFixed(1)}
         </span>
         <RegimeBadge regime={signal.regime} />
-        <span>{new Date(signal.created_at).toLocaleTimeString()}</span>
+        <div className="flex flex-col items-end gap-0.5">
+          <span>{new Date(signal.created_at).toLocaleTimeString()}</span>
+          {signal.expires_at && (
+            <ExpiryCountdown expiresAt={signal.expires_at} />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -120,6 +140,44 @@ function RegimeBadge({ regime }: { regime: string }) {
   return (
     <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
       {regime.replace("_", " ")}
+    </span>
+  );
+}
+
+function ExpiryCountdown({ expiresAt }: { expiresAt: string }) {
+  const [remaining, setRemaining] = useState("");
+  const [urgency, setUrgency] = useState<"normal" | "warning" | "critical" | "expired">("normal");
+
+  useEffect(() => {
+    const compute = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setRemaining("Expired");
+        setUrgency("expired");
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setRemaining(`${h}h ${m}m`);
+      if (h < 1) setUrgency("critical");
+      else if (h < 4) setUrgency("warning");
+      else setUrgency("normal");
+    };
+    compute();
+    const timer = setInterval(compute, 30000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+
+  const colorClass = {
+    normal: "text-gray-500",
+    warning: "text-yellow-400",
+    critical: "text-bearish animate-pulse",
+    expired: "text-bearish",
+  }[urgency];
+
+  return (
+    <span className={`text-xs ${colorClass}`} aria-label={`Expires in ${remaining}`}>
+      Expires: {remaining}
     </span>
   );
 }

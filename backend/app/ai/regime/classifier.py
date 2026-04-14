@@ -149,6 +149,8 @@ def _count_lh_ll(high: pd.Series, low: pd.Series, lookback: int) -> pd.Series:
 class RegimeClassifier:
     """Market regime classifier with rule-based fallback and LightGBM model."""
 
+    _last_regimes: dict[str, str] = {}
+
     def __init__(self) -> None:
         self._model: lgb.LGBMClassifier | None = None
         self._load_model()
@@ -167,6 +169,17 @@ class RegimeClassifier:
         if self._model is not None:
             return self._predict_ml(features)
         return self._predict_rules(features)
+
+    def predict_with_change_detection(self, asset: str, features: dict) -> tuple[RegimePrediction, bool]:
+        """Predict regime and detect if it changed."""
+        prediction = self.predict(features)
+        changed = False
+        last = self._last_regimes.get(asset)
+        if last and last != prediction.regime:
+            changed = True
+            logger.info("REGIME CHANGE: %s %s → %s (conf=%.1f%%)", asset, last, prediction.regime, prediction.confidence)
+        self._last_regimes[asset] = prediction.regime
+        return prediction, changed
 
     def predict_df(self, df: pd.DataFrame) -> RegimePrediction:
         """Predict from the last row of a feature DataFrame."""

@@ -54,6 +54,7 @@ class ConnectionManager:
                 try:
                     await ws.send_text(message)
                 except Exception:
+                    logger.debug("WS send failed for client", exc_info=True)
                     disconnected.append(ws)
         for ws in disconnected:
             self.disconnect(ws)

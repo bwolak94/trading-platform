@@ -2,9 +2,9 @@
   "stats": {
     "vwap_reversion:INTRADAY": {
       "wins": 4,
-      "losses": 47,
-      "total_pnl": -70.25,
-      "avg_reward": -1.647,
+      "losses": 48,
+      "total_pnl": -73.98,
+      "avg_reward": -1.654,
       "confidence_adj": 0.3
     },
     "liquidity_sweep:INTRADAY": {
@@ -16,9 +16,9 @@
     },
     "delta_divergence:INTRADAY": {
       "wins": 5,
-      "losses": 90,
-      "total_pnl": -89.11999999999998,
-      "avg_reward": -1.644,
+      "losses": 110,
+      "total_pnl": -153.48000000000002,
+      "avg_reward": -1.707,
       "confidence_adj": 0.3
     },
     "trend_following:CONSOLIDATION": {
@@ -29,9 +29,9 @@
       "confidence_adj": 0.3
     },
     "mean_reversion:CONSOLIDATION": {
-      "wins": 131,
+      "wins": 134,
       "losses": 1,
-      "total_pnl": 204.8399999999999,
+      "total_pnl": 210.8999999999999,
       "avg_reward": 1.992,
       "confidence_adj": 1.5
     },
@@ -53,32 +53,10 @@
     "vwap_reversion": 0.3,
     "delta_divergence": 0.3
   },
-  "blocked": {},
+  "blocked": {
+    "delta_divergence:INTRADAY": "2026-04-14T21:05:50.819914+00:00"
+  },
   "win_patterns": [
-    {
-      "strategy": "mean_reversion",
-      "regime": "CONSOLIDATION",
-      "pnl": 1.72,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-13T12:46:14.386853+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "regime": "CONSOLIDATION",
-      "pnl": 1.47,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-13T12:46:15.365724+00:00"
-    },
-    {
-      "strategy": "mean_reversion",
-      "regime": "CONSOLIDATION",
-      "pnl": 1.68,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-13T12:48:02.435388+00:00"
-    },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
@@ -454,177 +432,33 @@
       "hit": "TP2",
       "snapshot": {},
       "time": "2026-04-14T10:00:11.130032+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.0,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-14T10:01:20.866978+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.0,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-14T10:02:31.810050+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.06,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-14T10:03:42.066532+00:00"
     }
   ],
   "loss_patterns": [
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.82,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:52:12.291228+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.96,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:53:44.214903+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.55,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:53:49.859961+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.92,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:54:57.328672+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -2.0,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:54:58.226985+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.82,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:56:09.265794+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.82,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:56:09.726282+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.76,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:57:54.170945+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.8,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:58:55.496216+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -1.55,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:58:55.869975+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.8,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T12:59:58.628353+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.71,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T13:01:30.094305+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -1.55,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T13:01:30.511760+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.69,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T13:02:44.835469+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.7,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T13:03:45.148178+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.77,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T13:04:51.575959+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.73,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T13:05:58.402472+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.69,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T15:28:10.902348+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -1.55,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T16:09:12.342564+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -1.87,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T16:20:00.546537+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.51,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-13T16:20:13.766166+00:00"
-    },
     {
       "strategy": "delta_divergence",
       "regime": "INTRADAY",
@@ -856,6 +690,174 @@
       "hit": "SL",
       "snapshot": {},
       "time": "2026-04-14T08:51:47.591999+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -2.27,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:07:48.520508+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.55,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:07:48.893511+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -2.27,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:08:27.650374+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.64,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:08:27.981183+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.55,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:09:09.758852+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -3.73,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:12:03.225812+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.55,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:13:33.884668+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.18,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:21:43.757175+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.18,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:22:34.329145+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.18,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:23:26.421788+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.18,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:24:19.548118+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:25:17.364932+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -5.0,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:52:11.467120+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.18,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T10:59:16.907156+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.0,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:00:09.341416+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:01:06.336533+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:02:03.459317+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:02:59.537038+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:03:57.150550+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:04:54.315575+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.09,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-14T11:05:50.819849+00:00"
     }
   ]
 }

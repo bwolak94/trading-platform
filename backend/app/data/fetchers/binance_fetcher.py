@@ -40,6 +40,33 @@ DEFAULT_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1D"]
 MAX_RETRIES = 5
 RETRY_BASE_DELAY = 2.0
 
+_circuit_breaker = {"failures": 0, "open_until": 0.0}
+CIRCUIT_BREAKER_THRESHOLD = 5
+CIRCUIT_BREAKER_COOLDOWN = 300  # 5 minutes
+
+
+def _check_circuit_breaker() -> bool:
+    """Returns True if requests should proceed, False if circuit is open."""
+    import time
+    if _circuit_breaker["failures"] >= CIRCUIT_BREAKER_THRESHOLD:
+        if time.time() < _circuit_breaker["open_until"]:
+            return False
+        # Reset after cooldown
+        _circuit_breaker["failures"] = 0
+    return True
+
+
+def _record_failure():
+    import time
+    _circuit_breaker["failures"] += 1
+    if _circuit_breaker["failures"] >= CIRCUIT_BREAKER_THRESHOLD:
+        _circuit_breaker["open_until"] = time.time() + CIRCUIT_BREAKER_COOLDOWN
+        logger.warning("Circuit breaker OPEN: pausing Binance requests for %ds", CIRCUIT_BREAKER_COOLDOWN)
+
+
+def _record_success():
+    _circuit_breaker["failures"] = 0
+
 
 def _to_binance_symbol(symbol: str) -> str:
     """Convert 'BTC/USDT' to 'BTCUSDT'."""
@@ -81,6 +108,10 @@ class BinanceFetcher:
         limit: int = 1000,
     ) -> list[OHLCV]:
         """Fetch historical OHLCV candles via REST API with pagination."""
+        if not _check_circuit_breaker():
+            logger.warning("Circuit breaker is open — skipping Binance request for %s %s", symbol, interval)
+            return []
+
         binance_symbol = _to_binance_symbol(symbol)
         binance_interval = _to_binance_interval(interval)
         all_candles: list[OHLCV] = []
@@ -105,6 +136,7 @@ class BinanceFetcher:
                         data = resp.json()
                         break
                     except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+                        _record_failure()
                         if attempt == MAX_RETRIES:
                             logger.error(
                                 "Failed to fetch %s %s after %d retries: %s",
@@ -117,6 +149,8 @@ class BinanceFetcher:
                             attempt, MAX_RETRIES, symbol, interval, delay, exc,
                         )
                         await asyncio.sleep(delay)
+
+                _record_success()
 
                 if not data:
                     break

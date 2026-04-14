@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pandas as pd
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.ai.regime.classifier import RegimeClassifier
 from app.ai.strategies.base import MarketContext, SignalResult
@@ -13,11 +13,14 @@ from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
+from app.core.symbols import ALL_SYMBOLS, VALID_TIMEFRAMES
 from app.data.processors.feature_engineer import compute_features
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
+
+VALID_ASSETS = set(ALL_SYMBOLS)
 
 STRATEGIES = {
     "trend_following": TrendFollowingStrategy(),
@@ -262,6 +265,11 @@ async def run_analysis(
 
     Returns regime classification, strategy signals, and market summary.
     """
+    if asset not in VALID_ASSETS:
+        raise HTTPException(status_code=400, detail=f"Invalid asset. Valid: {sorted(VALID_ASSETS)}")
+    if timeframe not in VALID_TIMEFRAMES:
+        raise HTTPException(status_code=400, detail=f"Invalid timeframe. Valid: {sorted(VALID_TIMEFRAMES)}")
+
     # Fetch live data
     df = await _fetch_binance_klines(asset, timeframe, limit=500)
     if df.empty or len(df) < 50:
