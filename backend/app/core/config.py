@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     REDDIT_CLIENT_ID: str = ""
     REDDIT_CLIENT_SECRET: str = ""
 
+    # AI Chat
+    ANTHROPIC_API_KEY: str = ""
+
     # Notifications
     TELEGRAM_BOT_TOKEN: str = ""
 
@@ -36,7 +39,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production"
     CORS_ORIGINS: str = "http://localhost:5173"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=(".env", "../.env"),
+        env_file_encoding="utf-8",
+    )
 
 
 settings = Settings()

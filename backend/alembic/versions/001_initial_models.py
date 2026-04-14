@@ -21,7 +21,7 @@ def upgrade() -> None:
     # TimescaleDB extension
     op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
 
-    # market_data
+    # market_data — composite PK with timestamp for TimescaleDB hypertable
     op.create_table(
         "market_data",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column("close", sa.Numeric(20, 8), nullable=False),
         sa.Column("volume", sa.Numeric(20, 4), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id", "timestamp"),
     )
     op.create_index(
         "ix_market_data_asset_tf_ts",

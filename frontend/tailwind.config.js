@@ -7,6 +7,7 @@ export default {
         background: "#0d1117",
         surface: "#161b22",
         border: "#30363d",
+        accent: "#2563eb",
         bullish: "#00d4aa",
         bearish: "#ff4757",
         warning: "#ffb347",
