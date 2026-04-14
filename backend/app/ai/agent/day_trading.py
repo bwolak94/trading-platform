@@ -16,10 +16,15 @@ from app.ai.strategies.smc_strategy import find_order_blocks, find_fair_value_ga
 
 logger = logging.getLogger(__name__)
 
-SYMBOL_MAP = {"BTC/USDT": "BTCUSDT", "ETH/USDT": "ETHUSDT", "SOL/USDT": "SOLUSDT"}
-MONITOR_INTERVAL = 5  # check TP/SL every 5 seconds
-SCAN_INTERVAL = 30  # full analysis every 30 seconds
-DAY_TRADE_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+DAY_TRADE_SYMBOLS = [
+    "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+    "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT",
+    "MATIC/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "FIL/USDT",
+    "APT/USDT", "ARB/USDT", "OP/USDT", "SUI/USDT", "PEPE/USDT",
+]
+SYMBOL_MAP = {s: s.replace("/", "") for s in DAY_TRADE_SYMBOLS}
+MONITOR_INTERVAL = 5
+SCAN_INTERVAL = 30
 
 
 @dataclass
@@ -364,7 +369,7 @@ class DayTradingEngine:
             met = sum(1 for _, m in conditions if m)
             if met >= 3:
                 entry = round(session.pdh, 2)
-                sl = round(recent_high + atr * 0.3, 2)
+                sl = round(recent_high + max(atr * 0.5, close * 0.005), 2)
                 risk = abs(entry - sl)
                 return self._build_day_signal(symbol, "SHORT", entry, sl, risk,
                     "liquidity_sweep", f"Liquidity swept above PDH ${session.pdh:,.0f}, reversal confirmed",
@@ -382,7 +387,7 @@ class DayTradingEngine:
             met = sum(1 for _, m in conditions if m)
             if met >= 3:
                 entry = round(session.pdl, 2)
-                sl = round(recent_low - atr * 0.3, 2)
+                sl = round(recent_low - max(atr * 0.5, close * 0.005), 2)
                 risk = abs(entry - sl)
                 return self._build_day_signal(symbol, "LONG", entry, sl, risk,
                     "liquidity_sweep", f"Liquidity swept below PDL ${session.pdl:,.0f}, reversal confirmed",
@@ -404,7 +409,7 @@ class DayTradingEngine:
             met = sum(1 for _, m in conditions if m)
             if met >= 3:
                 entry = round(ob["mid"], 2)
-                sl = round(ob["low"] - atr * 0.3, 2)
+                sl = round(ob["low"] - max(atr * 0.5, close * 0.005), 2)
                 risk = abs(entry - sl)
                 return self._build_day_signal(symbol, "LONG", entry, sl, risk,
                     "ob_bounce", f"M5 Bullish OB retest at ${ob['low']:,.0f}-${ob['high']:,.0f}, above VWAP",
@@ -422,7 +427,7 @@ class DayTradingEngine:
             met = sum(1 for _, m in conditions if m)
             if met >= 3:
                 entry = round(ob["mid"], 2)
-                sl = round(ob["high"] + atr * 0.3, 2)
+                sl = round(ob["high"] + max(atr * 0.5, close * 0.005), 2)
                 risk = abs(entry - sl)
                 return self._build_day_signal(symbol, "SHORT", entry, sl, risk,
                     "ob_bounce", f"M5 Bearish OB retest at ${ob['low']:,.0f}-${ob['high']:,.0f}, below VWAP",
@@ -503,7 +508,7 @@ class DayTradingEngine:
             met = sum(1 for _, m in conditions if m)
             if met >= 2:
                 entry = close
-                sl = round(recent_high + atr * 0.3, 2)
+                sl = round(recent_high + max(atr * 0.5, close * 0.005), 2)
                 risk = abs(entry - sl)
                 return self._build_day_signal(symbol, "SHORT", round(entry, 2), sl, risk,
                     "delta_divergence", "Bearish delta divergence: price HH but delta LH -- buyers exhausted",
@@ -519,7 +524,7 @@ class DayTradingEngine:
             met = sum(1 for _, m in conditions if m)
             if met >= 2:
                 entry = close
-                sl = round(recent_low - atr * 0.3, 2)
+                sl = round(recent_low - max(atr * 0.5, close * 0.005), 2)
                 risk = abs(entry - sl)
                 return self._build_day_signal(symbol, "LONG", round(entry, 2), sl, risk,
                     "delta_divergence", "Bullish delta divergence: price LL but delta HL -- sellers exhausted",
@@ -527,13 +532,83 @@ class DayTradingEngine:
 
         return None
 
+    @staticmethod
+    def _price_round(price: float) -> float:
+        """Round price based on magnitude — 8 decimals for sub-$2 coins."""
+        if price >= 1000:
+            return round(price, 2)
+        if price >= 10:
+            return round(price, 4)
+        if price >= 2:
+            return round(price, 6)
+        return round(price, 8)
+
+    def _calculate_smart_tps(self, entry: float, risk: float, action: str, session: SessionLevels) -> tuple[float, float, float]:
+        """Calculate TP levels: 3% / 5% / 7% minimum, with structural level awareness."""
+        pr = self._price_round
+
+        tp1_min_pct = 0.03  # 3%
+        tp2_min_pct = 0.05  # 5%
+        tp3_min_pct = 0.07  # 7%
+
+        tp1_min = entry * tp1_min_pct
+        tp2_min = entry * tp2_min_pct
+        tp3_min = entry * tp3_min_pct
+
+        if action == "LONG":
+            tp1_base = entry + max(risk * 2.0, tp1_min)
+            tp2_base = entry + max(risk * 4.0, tp2_min)
+            tp3_base = entry + max(risk * 6.0, tp3_min)
+
+            # Use structural levels when they're reasonable targets
+            struct = sorted([
+                t for t in [session.vwap_upper, session.pdh, session.session_high]
+                if t > entry + tp1_min
+            ])
+
+            tp1 = struct[0] if struct and struct[0] < tp2_base else tp1_base
+            tp2 = struct[1] if len(struct) > 1 and struct[1] < tp3_base else tp2_base
+            tp3 = tp3_base
+
+            tp2 = max(tp2, tp1 + entry * 0.01)
+            tp3 = max(tp3, tp2 + entry * 0.01)
+        else:
+            tp1_base = entry - max(risk * 2.0, tp1_min)
+            tp2_base = entry - max(risk * 4.0, tp2_min)
+            tp3_base = entry - max(risk * 6.0, tp3_min)
+
+            struct = sorted([
+                t for t in [session.vwap_lower, session.pdl, session.session_low]
+                if 0 < t < entry - tp1_min
+            ], reverse=True)
+
+            tp1 = struct[0] if struct and struct[0] > tp2_base else tp1_base
+            tp2 = struct[1] if len(struct) > 1 and struct[1] > tp3_base else tp2_base
+            tp3 = tp3_base
+
+            tp2 = min(tp2, tp1 - entry * 0.01)
+            tp3 = min(tp3, tp2 - entry * 0.01)
+
+        return pr(tp1), pr(tp2), pr(tp3)
+
     def _build_day_signal(self, symbol: str, action: str, entry: float, sl: float, risk: float, strategy_type: str, reasoning: str, session: SessionLevels, conditions: list[tuple[str, bool]], hold_minutes: int) -> DayTradeSignal:
-        if risk <= 0:
-            risk = abs(entry * 0.003)
-        tp1 = round(entry + risk * 1.5, 2) if action == "LONG" else round(entry - risk * 1.5, 2)
-        tp2 = round(entry + risk * 3.0, 2) if action == "LONG" else round(entry - risk * 3.0, 2)
-        tp3 = round(entry + risk * 5.0, 2) if action == "LONG" else round(entry - risk * 5.0, 2)
-        be_trigger = tp1  # Move SL to BE when TP1 is hit
+        pr = self._price_round
+        entry = pr(entry)
+
+        # Minimum risk = 1.5% of price
+        min_risk = entry * 0.015
+        if risk < min_risk:
+            risk = min_risk
+            if action == "LONG":
+                sl = pr(entry - risk)
+            else:
+                sl = pr(entry + risk)
+        else:
+            sl = pr(sl)
+
+        # Smart TP levels using structural levels (VWAP, PDH/PDL, session H/L)
+        tp1, tp2, tp3 = self._calculate_smart_tps(entry, risk, action, session)
+        be_trigger = tp1
 
         met = sum(1 for _, m in conditions if m)
         readiness = round(met / max(len(conditions), 1) * 100)

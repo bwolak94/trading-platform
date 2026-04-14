@@ -23,8 +23,13 @@ from app.data.processors.feature_engineer import compute_features
 logger = logging.getLogger(__name__)
 
 SCAN_INTERVAL = 30  # seconds
-SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
-SYMBOL_MAP = {"BTC/USDT": "BTCUSDT", "ETH/USDT": "ETHUSDT", "SOL/USDT": "SOLUSDT"}
+SYMBOLS = [
+    "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+    "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT",
+    "MATIC/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "FIL/USDT",
+    "APT/USDT", "ARB/USDT", "OP/USDT", "SUI/USDT", "PEPE/USDT",
+]
+SYMBOL_MAP = {s: s.replace("/", "") for s in SYMBOLS}
 MIN_CONFIDENCE = 40  # minimum confidence to emit signal (lowered to show setups)
 
 

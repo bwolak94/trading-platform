@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchOrderFlow, type OrderFlowData, type PriceCluster } from "../../api/client";
+import { fetchOrderFlow, fetchKlines, type OrderFlowData, type PriceCluster } from "../../api/client";
 
 interface OrderFlowPanelProps {
   asset: string;
@@ -8,6 +8,7 @@ interface OrderFlowPanelProps {
 
 export function OrderFlowPanel({ asset, timeframe }: OrderFlowPanelProps) {
   const [data, setData] = useState<OrderFlowData | null>(null);
+  const [livePrice, setLivePrice] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   const binanceAsset = asset.replace("/", "").toUpperCase();
@@ -25,7 +26,19 @@ export function OrderFlowPanel({ asset, timeframe }: OrderFlowPanelProps) {
         .catch(() => {});
     }, 5000);
 
-    return () => { cancelled = true; clearInterval(timer); };
+    // Fetch live price every 2s from klines (always current)
+    const priceTimer = setInterval(() => {
+      if (cancelled) return;
+      fetchKlines(binanceAsset, "1m", 1)
+        .then((k) => { if (!cancelled && k.length > 0) setLivePrice(k[k.length - 1]!.close); })
+        .catch(() => {});
+    }, 2000);
+    // Initial price fetch
+    fetchKlines(binanceAsset, "1m", 1)
+      .then((k) => { if (!cancelled && k.length > 0) setLivePrice(k[k.length - 1]!.close); })
+      .catch(() => {});
+
+    return () => { cancelled = true; clearInterval(timer); clearInterval(priceTimer); };
   }, [binanceAsset, timeframe]);
 
   if (loading || !data) {
@@ -80,7 +93,7 @@ export function OrderFlowPanel({ asset, timeframe }: OrderFlowPanelProps) {
               <span className="ml-2 text-xs text-gray-500">({prediction.confidence}%)</span>
             </div>
           </div>
-          <span className="font-mono text-sm text-white">${data.current_price.toLocaleString()}</span>
+          <span className="font-mono text-sm text-white">${(livePrice || data.current_price).toLocaleString()}</span>
         </div>
         <p className="mt-1 text-xs text-gray-400">{prediction.reason}</p>
       </div>
