@@ -77,11 +77,39 @@ def _validate_columns(df: pd.DataFrame) -> None:
         logger.warning("DataFrame has >10%% NaN values, results may be unreliable")
     if (df["volume"] == 0).sum() > len(df) * 0.5:
         logger.warning("More than 50%% of candles have zero volume")
-    # Validate OHLC order
-    bad_ohlc = ((df["low"] > df["close"]) | (df["low"] > df["open"]) |
-                (df["high"] < df["close"]) | (df["high"] < df["open"])).sum()
-    if bad_ohlc > 0:
-        logger.warning("%d candles have invalid OHLC order (low > close or high < open)", bad_ohlc)
+    # Fix invalid OHLC (repair instead of just warning)
+    bad_mask = (df["low"] > df["close"]) | (df["low"] > df["open"]) | (df["high"] < df["close"]) | (df["high"] < df["open"])
+    bad_count = bad_mask.sum()
+    if bad_count > 0:
+        logger.warning("OHLC REPAIR: Fixing %d candles with invalid OHLC order", bad_count)
+        median_price = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
+        df.loc[bad_mask, "low"] = df.loc[bad_mask, ["open", "high", "low", "close"]].min(axis=1)
+        df.loc[bad_mask, "high"] = df.loc[bad_mask, ["open", "high", "low", "close"]].max(axis=1)
+
+    # Check data freshness
+    if "timestamp" in df.columns and len(df) > 0:
+        last_ts = df["timestamp"].iloc[-1]
+        if hasattr(last_ts, "timestamp"):
+            from datetime import datetime, timezone
+            age_minutes = (datetime.now(timezone.utc) - last_ts.to_pydatetime()).total_seconds() / 60
+            if age_minutes > 30:
+                logger.warning("STALE DATA: Last candle is %.0f minutes old", age_minutes)
+
+    # Check for data gaps
+    if "timestamp" in df.columns and len(df) > 2:
+        diffs = df["timestamp"].diff().dropna()
+        median_diff = diffs.median()
+        gaps = diffs[diffs > median_diff * 2]
+        if len(gaps) > 0:
+            logger.warning("DATA GAPS: %d gaps detected (>2x normal interval)", len(gaps))
+
+    # Flag extreme volume spikes
+    if "volume" in df.columns:
+        vol_median = df["volume"].rolling(20).median()
+        spikes = df["volume"] > vol_median * 10
+        spike_count = spikes.sum()
+        if spike_count > 0:
+            logger.warning("VOLUME SPIKES: %d candles with volume >10x median", spike_count)
 
 
 def _add_trend_indicators(df: pd.DataFrame) -> None:

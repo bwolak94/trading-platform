@@ -17,6 +17,7 @@ from app.ai.strategies.base import MarketContext
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks, find_fair_value_gaps
+from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
 from app.data.processors.feature_engineer import compute_features
 
@@ -51,6 +52,7 @@ class TradeSignal:
     conditions: list[dict]  # [{label, met}]
     ui_elements: dict  # sl_box, tp_boxes for chart rendering
     timestamp: str
+    trailing_stop_pct: float = 0.0  # 0 = disabled, e.g. 0.02 = 2% trail
 
     def to_dict(self) -> dict:
         """Serialize signal to a plain dictionary."""
@@ -69,6 +71,7 @@ class TradeSignal:
             "conditions": self.conditions,
             "ui_elements": self.ui_elements,
             "timestamp": self.timestamp,
+            "trailing_stop_pct": self.trailing_stop_pct,
         }
 
 
@@ -141,6 +144,7 @@ class TradingAgent:
             "mean_reversion": MeanReversionStrategy(),
             "smc": SMCStrategy(),
             "volume_breakout": VolumeBreakoutStrategy(),
+            "rsi_scalping": RSIScalpingStrategy(),
         }
         self._classifier = RegimeClassifier()
         self._reward_engine = RewardEngine()
@@ -299,6 +303,19 @@ class TradingAgent:
                     "TP1 hit for %s — SL moved to Break Even ($%s). Waiting for TP2/TP3 or BE.",
                     symbol, signal.entry,
                 )
+
+        # Trailing stop: update SL if price has moved favorably
+        trailing_pct = getattr(signal, "trailing_stop_pct", 0)
+        if trailing_pct > 0:
+            trail = signal.entry * trailing_pct
+            if is_long:
+                new_sl = price - trail
+                if new_sl > signal.stop_loss:
+                    signal.stop_loss = round(new_sl, 8)
+            else:
+                new_sl = price + trail
+                if new_sl < signal.stop_loss:
+                    signal.stop_loss = round(new_sl, 8)
 
         return None
 
@@ -703,6 +720,7 @@ class TradingAgent:
             conditions=setup["conditions"],
             ui_elements=ui,
             timestamp=datetime.now(timezone.utc).isoformat(),
+            trailing_stop_pct=getattr(signal, "trailing_stop_pct", 0.0),
         )
 
     def _signal_from_setup(

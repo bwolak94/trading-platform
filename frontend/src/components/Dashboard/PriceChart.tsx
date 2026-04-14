@@ -92,6 +92,12 @@ const INDICATOR_GROUPS = [
     ],
   },
   {
+    label: "Scalping",
+    items: [
+      { id: "rsi_scalp", label: "RSI Scalp Signals", color: "#22d3ee" },
+    ],
+  },
+  {
     label: "Levels",
     items: [
       { id: "liquidations", label: "Liquidation Levels", color: "#ec4899" },
@@ -100,7 +106,7 @@ const INDICATOR_GROUPS = [
   },
 ] as const;
 
-type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap";
+type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap" | "rsi_scalp";
 
 function fmt(p: number): string {
   if (p >= 1000) return p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -579,6 +585,21 @@ function drawIndicators(
         lineWidth: 1, lineStyle: LineStyle.SparseDotted,
         axisLabelVisible: liq.leverage <= 25,
         title: `${liq.leverage}x ${liq.side.toUpperCase()} LIQ`,
+      }));
+    }
+  }
+  // RSI Scalping BUY/SELL signals — only last 3 clean signals
+  const scalpSignals = (data as Record<string, unknown>)["scalp_signals"] as { time: number; type: string; price: number }[] | undefined;
+  if (active.has("rsi_scalp") && scalpSignals?.length) {
+    for (const sig of scalpSignals.slice(-3)) {
+      const isBuy = sig.type === "BUY";
+      plRefs.push(candleSeries.createPriceLine({
+        price: sig.price,
+        color: isBuy ? "#22d3ee" : "#f43f5e",
+        lineWidth: 2,
+        lineStyle: isBuy ? LineStyle.Dashed : LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `${sig.type} (RSI Scalp)`,
       }));
     }
   }

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal import Signal
@@ -35,6 +35,10 @@ class PositionSize:
 
 class RiskEngine:
     """Manages risk calculations, kill switch, and position sizing."""
+
+    MAX_CONCURRENT_TRADES = 8
+    _recovery_mode: bool = False
+    _recovery_scale: float = 0.5
 
     async def check_kill_switch(self, user_id: str, db: AsyncSession) -> bool:
         """Check if the system should be paused due to excessive drawdown.
@@ -100,6 +104,41 @@ class RiskEngine:
             position_pct=round(position_pct, 2),
             risk_amount=round(risk_amount, 2),
         )
+
+    def calculate_position_with_time_decay(
+        self,
+        capital: float,
+        risk_pct: float,
+        entry: float,
+        stop_loss: float,
+        estimated_hours: float,
+    ) -> PositionSize:
+        """Reduce position for longer trades."""
+        base = self.calculate_position_size(capital, risk_pct, entry, stop_loss)
+        if estimated_hours > 48:
+            decay = max(0.5, 1.0 - (estimated_hours - 48) / 200)
+            return PositionSize(
+                units=round(base.units * decay, 8),
+                position_value=round(base.position_value * decay, 2),
+                position_pct=round(base.position_pct * decay, 2),
+                risk_amount=round(base.risk_amount * decay, 2),
+            )
+        return base
+
+    def check_sl_overlap(
+        self,
+        new_sl: float,
+        new_tp1: float,
+        active_signals: list[dict],
+    ) -> float:
+        """Returns discount (0.5-1.0) if SL overlaps with existing TPs."""
+        for sig in active_signals:
+            existing_tp = sig.get("take_profit_1", 0)
+            if existing_tp > 0:
+                overlap = abs(new_sl - existing_tp) / max(new_sl, 0.001) * 100
+                if overlap < 2.0:
+                    return 0.5
+        return 1.0
 
     def get_correlation_discount(self, symbol: str, active_positions: dict[str, str]) -> float:
         """Returns a multiplier (0.3-1.0) based on correlated open positions."""
@@ -239,6 +278,74 @@ class RiskEngine:
             "kill_switch_active": kill_switch_active,
             "streak": streak,
         }
+
+    async def check_daily_loss_limit(self, user_id: str, db: AsyncSession, daily_limit_pct: float = 3.0) -> bool:
+        """Check if daily P&L has exceeded daily loss limit. Returns True if limit hit."""
+        user_settings = await self._get_user_settings(user_id, db)
+        if not user_settings or not user_settings.capital:
+            return False
+
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await db.execute(
+            select(Signal).where(
+                and_(Signal.created_at >= today_start, Signal.status.in_(["TP1_HIT", "TP2_HIT", "SL_HIT"]))
+            )
+        )
+        closed_today = result.scalars().all()
+
+        daily_pnl = sum(self._calculate_signal_pnl(s, float(user_settings.capital)) for s in closed_today)
+        daily_pnl_pct = (daily_pnl / float(user_settings.capital)) * 100
+
+        if daily_pnl_pct <= -daily_limit_pct:
+            logger.warning("Daily loss limit hit: %.2f%% (limit: -%.1f%%)", daily_pnl_pct, daily_limit_pct)
+            return True
+        return False
+
+    async def check_max_concurrent(self, db: AsyncSession) -> bool:
+        """Returns True if at max concurrent trades."""
+        result = await db.execute(
+            select(func.count(Signal.id)).where(Signal.status == "ACTIVE")
+        )
+        count = result.scalar() or 0
+        return count >= self.MAX_CONCURRENT_TRADES
+
+    def is_recovery_mode(self) -> bool:
+        """Check if recovery mode is active."""
+        return self._recovery_mode
+
+    def set_recovery_mode(self, active: bool):
+        """Enable or disable recovery mode."""
+        self._recovery_mode = active
+        if active:
+            logger.info("Recovery mode ACTIVATED: position sizes reduced to %.0f%%", self._recovery_scale * 100)
+
+    def get_position_scale(self) -> float:
+        """Get current position scale factor."""
+        return self._recovery_scale if self._recovery_mode else 1.0
+
+    async def calculate_portfolio_heat(self, db: AsyncSession, capital: float) -> float:
+        """Calculate total portfolio risk as % of capital."""
+        result = await db.execute(
+            select(Signal).where(Signal.status == "ACTIVE")
+        )
+        active = result.scalars().all()
+        total_risk = 0.0
+        for sig in active:
+            if sig.entry_price and sig.stop_loss:
+                risk_per_unit = abs(float(sig.entry_price) - float(sig.stop_loss))
+                pct = float(sig.position_size_pct or 0) / 100
+                total_risk += risk_per_unit * pct * capital / max(float(sig.entry_price), 0.001)
+        return round(total_risk / max(capital, 1) * 100, 2)
+
+    def adjust_risk_by_winrate(self, base_risk_pct: float, recent_win_rate: float) -> float:
+        """Adjust risk percentage based on recent win rate."""
+        if recent_win_rate < 0.35:
+            return round(base_risk_pct * 0.6, 2)  # Reduce 40%
+        if recent_win_rate < 0.45:
+            return round(base_risk_pct * 0.8, 2)  # Reduce 20%
+        if recent_win_rate > 0.70:
+            return round(base_risk_pct * 1.15, 2)  # Boost 15%
+        return base_risk_pct
 
     async def _calculate_streak(self, db: AsyncSession) -> dict[str, int]:
         """Calculate current win/loss streak."""

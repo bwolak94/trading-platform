@@ -8,6 +8,8 @@ import {
 } from "../../api/client";
 import type { AgentSignal, LearningData } from "../../api/client";
 import { DayTradeHUD } from "./DayTradeHUD";
+import { EquityCurve } from "./EquityCurve";
+import { StrategyStats } from "./StrategyStats";
 
 function formatNumber(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -464,6 +466,14 @@ export function AgentPanel() {
       {/* === AI Learning Dashboard === */}
       <h2 className="text-lg font-bold text-white border-b border-border pb-2 mt-8">AI Learning Engine</h2>
       <LearningDashboard />
+
+      {/* === Equity Curve === */}
+      <h2 className="text-lg font-bold text-white border-b border-border pb-2 mt-8">Equity Curve</h2>
+      <EquityCurve />
+
+      {/* === Strategy Performance Stats === */}
+      <h2 className="text-lg font-bold text-white border-b border-border pb-2 mt-8">Strategy Performance</h2>
+      <StrategyStats />
     </div>
   );
 }

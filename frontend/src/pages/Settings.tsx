@@ -9,6 +9,7 @@ import {
 } from "../api/client";
 import type { UserSettings } from "../types";
 import { CardSkeleton } from "../components/ui/Skeleton";
+import { SystemHealth } from "../components/Dashboard/SystemHealth";
 
 const AVAILABLE_ASSETS = [
   "BTC/USDT",
@@ -344,6 +345,9 @@ export function SettingsPage() {
           </div>
         </section>
       </div>
+
+      {/* System Health */}
+      <SystemHealth />
 
       {/* Save Button */}
       <div className="flex justify-end">

@@ -379,6 +379,27 @@ async def get_indicators(
             "intensity": intensity,
         })
 
+    # RSI Scalping indicators (Stochastic + DMI Stochastic)
+    from app.ai.strategies.rsi_scalping import compute_rsi_scalping_indicators
+    scalp_df = compute_rsi_scalping_indicators(featured)
+    scalp_times = [int(t.timestamp()) for t in scalp_df["timestamp"]] if "timestamp" in scalp_df.columns else times[-len(scalp_df):]
+
+    stoch_k = [{"time": t, "value": round(v, 2)} for t, v in zip(scalp_times, scalp_df["stoch_k"]) if not pd.isna(v)]
+    stoch_d = [{"time": t, "value": round(v, 2)} for t, v in zip(scalp_times, scalp_df["stoch_d"]) if not pd.isna(v)]
+    dmi_stoch = [{"time": t, "value": round(v, 2)} for t, v in zip(scalp_times, scalp_df["dmi_stoch"]) if not pd.isna(v)]
+
+    # Buy/Sell markers from DMI Stoch crossovers
+    scalp_signals = []
+    for i, row in scalp_df.iterrows():
+        if row.get("cross_up", 0) == 1:
+            idx = scalp_df.index.get_loc(i)
+            if idx < len(scalp_times):
+                scalp_signals.append({"time": scalp_times[idx], "type": "BUY", "price": round(float(row["close"]), 2)})
+        if row.get("cross_down", 0) == 1:
+            idx = scalp_df.index.get_loc(i)
+            if idx < len(scalp_times):
+                scalp_signals.append({"time": scalp_times[idx], "type": "SELL", "price": round(float(row["close"]), 2)})
+
     return {
         "ema_20": ema_20,
         "ema_50": ema_50,
@@ -390,6 +411,10 @@ async def get_indicators(
         "macd_line": macd_line,
         "macd_signal": macd_signal,
         "macd_hist": macd_hist,
+        "stoch_k": stoch_k,
+        "stoch_d": stoch_d,
+        "dmi_stoch": dmi_stoch,
+        "scalp_signals": scalp_signals,
         "order_blocks": order_blocks,
         "fair_value_gaps": fair_value_gaps,
         "liquidation_levels": liquidation_levels,

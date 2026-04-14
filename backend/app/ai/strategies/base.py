@@ -16,6 +16,7 @@ class MarketContext:
     sentiment_score: float = 0.0
     onchain_score: float = 0.0
     macro_events: list[dict[str, Any]] = field(default_factory=list)
+    market_session: str = "UNKNOWN"  # "NYSE", "LONDON", "ASIAN", "OFF_HOURS", "UNKNOWN"
 
 
 @dataclass
@@ -33,6 +34,9 @@ class SignalResult:
     risk_reward: float
     factors: list[dict[str, Any]]
     strategy_name: str
+    trailing_stop_pct: float = 0.0  # 0 = disabled, e.g. 0.02 = 2% trail
+    partial_tp_schedule: list[dict] = field(default_factory=list)  # [{pct_close: 25, price: X}, ...]
+    pyramid_levels: list[dict] = field(default_factory=list)  # [{price: X, size_pct: 25}, ...]
 
 
 class BaseStrategy(ABC):

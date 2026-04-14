@@ -31,6 +31,7 @@ export function Dashboard() {
   } = useAppStore();
 
   const [sideTab, setSideTab] = useState<SideTab>("orderflow");
+  const [sidebarVisible, setSidebarVisible] = useState(true);
   const [chartAsset, setChartAsset] = useState("BTCUSDT");
   const [chartTf, setChartTf] = useState("1h");
 
@@ -91,26 +92,40 @@ export function Dashboard() {
       </div>
 
       {/* Chart + Side Panel */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="lg:col-span-1 xl:col-span-2">
           <MultiChart onAssetChange={(a, t) => { setChartAsset(a); setChartTf(t); }} />
         </div>
         <div className="space-y-0">
-          {/* Side tab selector */}
-          <div className="flex border-b border-border">
-            <button type="button" onClick={() => setSideTab("orderflow")}
-              className={`flex-1 py-2 text-xs font-medium ${sideTab === "orderflow" ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"}`}
-              aria-label="Order Flow tab">
-              Order Flow
-            </button>
-            <button type="button" onClick={() => setSideTab("chat")}
-              className={`flex-1 py-2 text-xs font-medium ${sideTab === "chat" ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"}`}
-              aria-label="AI Chat tab">
-              AI Chat
-            </button>
-          </div>
-          {sideTab === "orderflow" && <OrderFlowPanel asset={chartAssetDisplay} timeframe="1m" />}
-          {sideTab === "chat" && <TradingChat />}
+          {/* Mobile sidebar toggle */}
+          <button
+            type="button"
+            onClick={() => setSidebarVisible(!sidebarVisible)}
+            className="mb-2 w-full rounded bg-surface px-3 py-2 text-xs font-medium text-gray-400 hover:text-white lg:hidden"
+            aria-label={sidebarVisible ? "Hide sidebar panel" : "Show sidebar panel"}
+            aria-expanded={sidebarVisible}
+          >
+            {sidebarVisible ? "Hide Panel" : "Show Panel"}
+          </button>
+          {sidebarVisible && (
+            <>
+              {/* Side tab selector */}
+              <div className="flex border-b border-border">
+                <button type="button" onClick={() => setSideTab("orderflow")}
+                  className={`flex-1 py-2 text-xs font-medium ${sideTab === "orderflow" ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"}`}
+                  aria-label="Order Flow tab">
+                  Order Flow
+                </button>
+                <button type="button" onClick={() => setSideTab("chat")}
+                  className={`flex-1 py-2 text-xs font-medium ${sideTab === "chat" ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"}`}
+                  aria-label="AI Chat tab">
+                  AI Chat
+                </button>
+              </div>
+              {sideTab === "orderflow" && <OrderFlowPanel asset={chartAssetDisplay} timeframe="1m" />}
+              {sideTab === "chat" && <TradingChat />}
+            </>
+          )}
         </div>
       </div>
 

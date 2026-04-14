@@ -575,6 +575,38 @@ export async function fetchWhaleData(): Promise<WhaleData> {
   return data;
 }
 
+// --- Pro Analysis ---
+
+export interface ProAnalysisData {
+  analysis: string;
+  recommendation: {
+    action: string;
+    entry: number;
+    stop_loss: number;
+    take_profit_1: number;
+    take_profit_2: number;
+    take_profit_3: number;
+    risk_reward: number;
+    confidence: number;
+    timeframe: string;
+  } | null;
+  market_data: Record<string, unknown>;
+  probability: { long: number; short: number; components: Record<string, number> };
+}
+
+export async function sendProAnalysis(
+  message: string,
+  asset: string,
+  timeframe: string,
+  imageBase64: string | null,
+  history: { role: string; content: string }[],
+): Promise<ProAnalysisData> {
+  const { data } = await api.post<ProAnalysisData>("/pro-analysis", {
+    message, asset, timeframe, image_base64: imageBase64, history,
+  });
+  return data;
+}
+
 // --- System ---
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {

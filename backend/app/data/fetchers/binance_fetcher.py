@@ -68,6 +68,24 @@ def _record_success():
     _circuit_breaker["failures"] = 0
 
 
+# Module-level shared HTTP client for connection pooling
+_shared_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Return a shared httpx.AsyncClient with connection pooling.
+
+    Reuses keep-alive connections instead of creating new clients per request.
+    """
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        _shared_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+        )
+    return _shared_client
+
+
 def _to_binance_symbol(symbol: str) -> str:
     """Convert 'BTC/USDT' to 'BTCUSDT'."""
     return SYMBOL_MAP.get(symbol, symbol.replace("/", ""))
@@ -118,51 +136,51 @@ class BinanceFetcher:
         current_start = int(start_time.timestamp() * 1000)
         end_ms = int(end_time.timestamp() * 1000)
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            while current_start < end_ms:
-                for attempt in range(1, MAX_RETRIES + 1):
-                    try:
-                        resp = await client.get(
-                            f"{BASE_REST_URL}/api/v3/klines",
-                            params={
-                                "symbol": binance_symbol,
-                                "interval": binance_interval,
-                                "startTime": current_start,
-                                "endTime": end_ms,
-                                "limit": limit,
-                            },
-                        )
-                        resp.raise_for_status()
-                        data = resp.json()
-                        break
-                    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
-                        _record_failure()
-                        if attempt == MAX_RETRIES:
-                            logger.error(
-                                "Failed to fetch %s %s after %d retries: %s",
-                                symbol, interval, MAX_RETRIES, exc,
-                            )
-                            raise
-                        delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
-                        logger.warning(
-                            "Retry %d/%d for %s %s in %.1fs: %s",
-                            attempt, MAX_RETRIES, symbol, interval, delay, exc,
-                        )
-                        await asyncio.sleep(delay)
-
-                _record_success()
-
-                if not data:
+        client = _get_client()
+        while current_start < end_ms:
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    resp = await client.get(
+                        f"{BASE_REST_URL}/api/v3/klines",
+                        params={
+                            "symbol": binance_symbol,
+                            "interval": binance_interval,
+                            "startTime": current_start,
+                            "endTime": end_ms,
+                            "limit": limit,
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
                     break
+                except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+                    _record_failure()
+                    if attempt == MAX_RETRIES:
+                        logger.error(
+                            "Failed to fetch %s %s after %d retries: %s",
+                            symbol, interval, MAX_RETRIES, exc,
+                        )
+                        raise
+                    delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Retry %d/%d for %s %s in %.1fs: %s",
+                        attempt, MAX_RETRIES, symbol, interval, delay, exc,
+                    )
+                    await asyncio.sleep(delay)
 
-                candles = [_parse_kline(symbol, interval, k) for k in data]
-                all_candles.extend(candles)
+            _record_success()
 
-                # Move start to after the last candle's open time
-                current_start = int(data[-1][0]) + 1
+            if not data:
+                break
 
-                if len(data) < limit:
-                    break
+            candles = [_parse_kline(symbol, interval, k) for k in data]
+            all_candles.extend(candles)
+
+            # Move start to after the last candle's open time
+            current_start = int(data[-1][0]) + 1
+
+            if len(data) < limit:
+                break
 
         logger.info(
             "Fetched %d historical candles for %s %s", len(all_candles), symbol, interval

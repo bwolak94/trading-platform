@@ -10,6 +10,7 @@ import pandas as pd
 from app.ai.regime.classifier import RegimeClassifier, RegimePrediction
 from app.ai.strategies.base import BaseStrategy, MarketContext, SignalResult
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
+from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
@@ -49,6 +50,7 @@ class SignalAggregator:
             MeanReversionStrategy(),
             SMCStrategy(),
             VolumeBreakoutStrategy(),
+            RSIScalpingStrategy(),
         ]
         self._classifier = RegimeClassifier()
         self._recent_signals: list[dict[str, Any]] = []
@@ -89,6 +91,9 @@ class SignalAggregator:
             logger.info("High-impact macro event imminent for %s — skipping", asset)
             return None
 
+        # Determine market session based on UTC hour
+        session = self._determine_market_session()
+
         # 2. Select compatible strategies
         context = MarketContext(
             regime=regime.regime,
@@ -96,6 +101,7 @@ class SignalAggregator:
             sentiment_score=sentiment_score,
             onchain_score=onchain_score,
             macro_events=macro_events,
+            market_session=session,
         )
 
         compatible = [s for s in self._strategies if s.is_compatible(regime.regime)]
@@ -159,6 +165,22 @@ class SignalAggregator:
             logger.info("Duplicate signal suppressed for %s %s", asset, best.direction)
             return None
 
+        # Reduce confidence by 10% during off-hours or Asian session
+        if session in ("OFF_HOURS", "ASIAN"):
+            final_confidence = final_confidence * 0.90
+            logger.info(
+                "Off-hours/Asian session confidence reduction applied for %s: %.1f",
+                asset, final_confidence,
+            )
+
+        # Re-check minimum confidence after session adjustment
+        if final_confidence < best.min_confidence:
+            logger.info(
+                "Signal for %s below min confidence after session adj (%.1f < %.1f)",
+                asset, final_confidence, best.min_confidence,
+            )
+            return None
+
         # Build final signal with adjusted confidence
         final_signal = SignalResult(
             asset=best.asset,
@@ -187,6 +209,25 @@ class SignalAggregator:
             asset, best.direction, timeframe, final_confidence, best.strategy_name,
         )
         return final_signal
+
+    @staticmethod
+    def _determine_market_session() -> str:
+        """Determine the current market session based on UTC hour.
+
+        NYSE:    13:00-21:00 UTC
+        LONDON:  07:00-16:00 UTC
+        ASIAN:   00:00-09:00 UTC
+        OFF_HOURS: everything else (gaps between sessions)
+        """
+        hour = datetime.now(timezone.utc).hour
+        if 13 <= hour <= 21:
+            return "NYSE"
+        elif 7 <= hour <= 16:
+            return "LONDON"
+        elif 0 <= hour <= 9:
+            return "ASIAN"
+        else:
+            return "OFF_HOURS"
 
     def _has_imminent_macro(self, events: list[dict[str, Any]]) -> bool:
         """Check if a HIGH impact macro event is within 15 minutes."""

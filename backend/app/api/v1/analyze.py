@@ -22,11 +22,14 @@ router = APIRouter(prefix="/analyze", tags=["analyze"])
 
 VALID_ASSETS = set(ALL_SYMBOLS)
 
+from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+
 STRATEGIES = {
     "trend_following": TrendFollowingStrategy(),
     "mean_reversion": MeanReversionStrategy(),
     "smc": SMCStrategy(),
     "volume_breakout": VolumeBreakoutStrategy(),
+    "rsi_scalping": RSIScalpingStrategy(),
 }
 
 STRATEGY_DESCRIPTIONS = {
@@ -34,6 +37,7 @@ STRATEGY_DESCRIPTIONS = {
     "mean_reversion": "Identifies oversold/overbought conditions using RSI divergence and Bollinger Bands. Best in consolidation.",
     "smc": "Smart Money Concepts — finds Order Blocks and Fair Value Gaps for institutional-level entries. Best in trends.",
     "volume_breakout": "Detects range breakouts confirmed by volume spikes. Works in all market conditions.",
+    "rsi_scalping": "RSI + Stochastic + DMI Stochastic crossover scalping. BUY when DMI Stoch crosses above 10, SELL when crosses below 90. Works in all regimes.",
 }
 
 SYMBOL_MAP = {
