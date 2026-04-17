@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.ai.regime.classifier import RegimeClassifier
+from app.schemas.market import ChatRequest
 from app.ai.strategies.base import MarketContext
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks, find_fair_value_gaps
@@ -55,13 +56,6 @@ When you recommend a trade, include this JSON block (the frontend will draw it o
 
 Always be specific with numbers. Use the live data provided to make your analysis current and accurate. Format your response with clear sections."""
 
-
-class ChatRequest(BaseModel):
-    """Chat message from the user."""
-    message: str
-    asset: str = "BTC/USDT"
-    timeframe: str = "4h"
-    history: list[dict[str, str]] = []
 
 
 class ChatResponse(BaseModel):

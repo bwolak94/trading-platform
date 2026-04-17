@@ -10,16 +10,31 @@ const directionConfig = {
 interface SignalCardProps {
   signal: Signal;
   isNew?: boolean;
+  onNavigate?: (asset: string, timeframe?: string) => void;
 }
 
-export function SignalCard({ signal, isNew }: SignalCardProps) {
+export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
   const config = directionConfig[signal.direction] ?? directionConfig.NEUTRAL;
+
+  const handleClick = () => {
+    onNavigate?.(signal.asset);
+  };
 
   return (
     <div
+      role={onNavigate ? "button" : undefined}
+      tabIndex={onNavigate ? 0 : undefined}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (onNavigate && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
       className={`rounded-lg border ${config.border} bg-surface p-5 transition-all ${
         isNew ? "animate-pulse ring-1 ring-bullish/40" : ""
-      }`}
+      } ${onNavigate ? "cursor-pointer hover:border-accent/50 hover:ring-1 hover:ring-accent/30" : ""}`}
+      aria-label={onNavigate ? `Navigate chart to ${signal.asset}` : undefined}
     >
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">

@@ -6,6 +6,7 @@ from app.models.market_regime import MarketRegime
 from app.models.onchain_event import OnChainEvent
 from app.models.sentiment_data import SentimentData
 from app.models.signal import Signal
+from app.models.strategy_params import StrategyParams
 from app.models.user_settings import UserSettings
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "OnChainEvent",
     "SentimentData",
     "Signal",
+    "StrategyParams",
     "UserSettings",
 ]

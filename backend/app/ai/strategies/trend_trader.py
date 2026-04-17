@@ -28,15 +28,37 @@ class TrendTraderStrategy(BaseStrategy):
     TENKAN_PERIOD = 9
     KIJUN_PERIOD = 26
     SENKOU_SPAN = 26
+    SENKOU_SPAN_B_PERIOD = 52
     CHIKOU_SHIFT = 26
 
     # Fib params
     FIB_LOOKBACK = 100
     FIB_PROXIMITY_ATR = 1.5  # how close price needs to be to a fib level (in ATR units)
+    FIB_LEVELS = {
+        "0.0": 0.0,
+        "23.6": 0.236,
+        "38.2": 0.382,
+        "50.0": 0.500,
+        "61.8": 0.618,
+        "78.6": 0.786,
+        "88.6": 0.886,
+        "100.0": 1.0,
+    }
 
     # S/R params
     SR_LOOKBACK = 200
     SR_TOUCH_MIN = 2
+
+    # RSI filter thresholds
+    RSI_OVERBOUGHT = 75
+    RSI_OVERSOLD = 25
+    RSI_HEALTHY_LONG_LOW = 40
+    RSI_HEALTHY_LONG_HIGH = 65
+    RSI_HEALTHY_SHORT_LOW = 35
+    RSI_HEALTHY_SHORT_HIGH = 60
+
+    # Volume confirmation threshold
+    VOLUME_THRESHOLD = 1.2
 
     def generate_signal(
         self,
@@ -112,7 +134,7 @@ class TrendTraderStrategy(BaseStrategy):
         # Senkou Span A
         senkou_a = ((tenkan + kijun) / 2).shift(self.SENKOU_SPAN)
         # Senkou Span B
-        senkou_b = ((high.rolling(self.SENKOU_SPAN * 2).max() + low.rolling(self.SENKOU_SPAN * 2).min()) / 2).shift(self.SENKOU_SPAN)
+        senkou_b = ((high.rolling(self.SENKOU_SPAN_B_PERIOD).max() + low.rolling(self.SENKOU_SPAN_B_PERIOD).min()) / 2).shift(self.SENKOU_SPAN)
 
         last_tenkan = tenkan.iloc[-1]
         last_kijun = kijun.iloc[-1]
@@ -136,14 +158,8 @@ class TrendTraderStrategy(BaseStrategy):
             return {}
 
         return {
-            "0.0": swing_low,
-            "23.6": swing_low + diff * 0.236,
-            "38.2": swing_low + diff * 0.382,
-            "50.0": swing_low + diff * 0.500,
-            "61.8": swing_low + diff * 0.618,
-            "78.6": swing_low + diff * 0.786,
-            "88.6": swing_low + diff * 0.886,
-            "100.0": swing_high,
+            name: swing_low + diff * ratio
+            for name, ratio in self.FIB_LEVELS.items()
         }
 
     def _compute_sr_levels(self, df: pd.DataFrame) -> list[dict]:
@@ -241,14 +257,14 @@ class TrendTraderStrategy(BaseStrategy):
 
         # 5. Volume confirmation (optional bonus)
         volume_ratio = float(last.get("volume_vs_avg", 1.0))
-        if volume_ratio > 1.2:
+        if volume_ratio > self.VOLUME_THRESHOLD:
             factors.append({"name": "Volume Confirmation", "weight": 0.10, "score": min(volume_ratio / 2, 1.0), "label": "BULLISH"})
 
         # 6. RSI filter — not overbought
         rsi = float(last.get("rsi_14", 50))
-        if rsi > 75:
+        if rsi > self.RSI_OVERBOUGHT:
             return None
-        if 40 <= rsi <= 65:
+        if self.RSI_HEALTHY_LONG_LOW <= rsi <= self.RSI_HEALTHY_LONG_HIGH:
             factors.append({"name": "RSI Healthy Range", "weight": 0.10, "score": 0.7, "label": "BULLISH"})
 
         return {"factors": factors}
@@ -291,14 +307,14 @@ class TrendTraderStrategy(BaseStrategy):
 
         # 5. Volume confirmation
         volume_ratio = float(last.get("volume_vs_avg", 1.0))
-        if volume_ratio > 1.2:
+        if volume_ratio > self.VOLUME_THRESHOLD:
             factors.append({"name": "Volume Confirmation", "weight": 0.10, "score": min(volume_ratio / 2, 1.0), "label": "BEARISH"})
 
         # 6. RSI filter — not oversold
         rsi = float(last.get("rsi_14", 50))
-        if rsi < 25:
+        if rsi < self.RSI_OVERSOLD:
             return None
-        if 35 <= rsi <= 60:
+        if self.RSI_HEALTHY_SHORT_LOW <= rsi <= self.RSI_HEALTHY_SHORT_HIGH:
             factors.append({"name": "RSI Healthy Range", "weight": 0.10, "score": 0.7, "label": "BEARISH"})
 
         return {"factors": factors}

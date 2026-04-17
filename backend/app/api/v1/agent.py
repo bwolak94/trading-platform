@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.ai.agent.trading_agent import get_trading_agent
+from app.schemas.market import TradeOutcomeRequest
 
 logger = logging.getLogger(__name__)
 
@@ -53,21 +54,17 @@ async def get_history() -> dict:
 
 
 @router.post("/outcome")
-async def record_outcome(
-    symbol: str,
-    exit_price: float,
-    hit_level: str,
-) -> dict:
+async def record_outcome(request: TradeOutcomeRequest) -> dict:
     """Record a trade outcome for learning."""
     agent = get_trading_agent()
-    outcome = agent.record_outcome(symbol, exit_price, hit_level)
+    outcome = agent.record_outcome(request.symbol, request.exit_price, request.hit_level)
     if outcome is None:
         raise HTTPException(
             status_code=404,
-            detail=f"No active signal found for {symbol}",
+            detail=f"No active signal found for {request.symbol}",
         )
     return {
-        "symbol": symbol,
+        "symbol": request.symbol,
         "pnl_pct": outcome.pnl_pct,
         "reward": outcome.reward,
         "lessons": outcome.lessons,

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { RegimeData, Signal, UserSettings } from "../types";
 
 interface AppState {
@@ -20,24 +21,52 @@ interface AppState {
   setSystemPaused: (paused: boolean) => void;
   drawdownPct: number;
   setDrawdownPct: (pct: number) => void;
+
+  // UI Preferences (persisted)
+  selectedAsset: string;
+  setSelectedAsset: (asset: string) => void;
+  selectedTimeframe: string;
+  setSelectedTimeframe: (timeframe: string) => void;
+  enabledIndicators: string[];
+  setEnabledIndicators: (indicators: string[]) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  activeSignals: [],
-  setActiveSignals: (signals) => set({ activeSignals: signals }),
-  addSignal: (signal) =>
-    set((state) => ({
-      activeSignals: [signal, ...state.activeSignals],
-    })),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      activeSignals: [],
+      setActiveSignals: (signals) => set({ activeSignals: signals }),
+      addSignal: (signal) =>
+        set((state) => ({
+          activeSignals: [signal, ...state.activeSignals],
+        })),
 
-  regimes: [],
-  setRegimes: (regimes) => set({ regimes }),
+      regimes: [],
+      setRegimes: (regimes) => set({ regimes }),
 
-  settings: null,
-  setSettings: (settings) => set({ settings }),
+      settings: null,
+      setSettings: (settings) => set({ settings }),
 
-  systemPaused: false,
-  setSystemPaused: (paused) => set({ systemPaused: paused }),
-  drawdownPct: 0,
-  setDrawdownPct: (pct) => set({ drawdownPct: pct }),
-}));
+      systemPaused: false,
+      setSystemPaused: (paused) => set({ systemPaused: paused }),
+      drawdownPct: 0,
+      setDrawdownPct: (pct) => set({ drawdownPct: pct }),
+
+      selectedAsset: "BTCUSDT",
+      setSelectedAsset: (asset) => set({ selectedAsset: asset }),
+      selectedTimeframe: "4h",
+      setSelectedTimeframe: (timeframe) => set({ selectedTimeframe: timeframe }),
+      enabledIndicators: [],
+      setEnabledIndicators: (indicators) =>
+        set({ enabledIndicators: indicators }),
+    }),
+    {
+      name: "trading-platform-store",
+      partialize: (state) => ({
+        selectedAsset: state.selectedAsset,
+        selectedTimeframe: state.selectedTimeframe,
+        enabledIndicators: state.enabledIndicators,
+      }),
+    }
+  )
+);

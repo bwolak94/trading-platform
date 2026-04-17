@@ -18,6 +18,26 @@ from app.ai.strategies.base import BaseStrategy, MarketContext, SignalResult
 
 logger = logging.getLogger(__name__)
 
+# Indicator parameters
+RSI_PERIOD = 14
+STOCH_PERIOD_K = 14
+STOCH_PERIOD_D = 6
+STOCH_SMOOTH_K = 6
+DMI_LENGTH = 20
+DMI_STOCH_LENGTH = 5
+
+# Cross thresholds for DMI Stochastic
+DMI_CROSS_UP_THRESHOLD = 10
+DMI_CROSS_DOWN_THRESHOLD = 90
+
+# Signal debounce (minimum candles between signals)
+SIGNAL_DEBOUNCE_COUNT = 5
+
+# RSI filter levels for buy/sell confirmation
+RSI_BUY_FILTER = 45
+RSI_SELL_FILTER = 55
+STOCH_MIDLINE = 50
+
 
 def _wwma(series: pd.Series, length: int) -> pd.Series:
     """Welles Wilder Moving Average (same as RMA in TradingView)."""
@@ -39,31 +59,24 @@ def compute_rsi_scalping_indicators(df: pd.DataFrame) -> pd.DataFrame:
     high = df["high"]
     low = df["low"]
 
-    # --- RSI (14) ---
-    rsi_len = 14
+    # --- RSI ---
     delta = close.diff()
     gain = delta.where(delta > 0, 0.0)
     loss = (-delta).where(delta < 0, 0.0)
-    avg_gain = _wwma(gain, rsi_len)
-    avg_loss = _wwma(loss, rsi_len)
+    avg_gain = _wwma(gain, RSI_PERIOD)
+    avg_loss = _wwma(loss, RSI_PERIOD)
     rs = avg_gain / avg_loss.replace(0, np.nan)
     df["rsi_scalp"] = 100 - (100 / (1 + rs))
     df["rsi_scalp"] = df["rsi_scalp"].fillna(50)
 
-    # --- Stochastic (K=14, D=6, Smooth=6) ---
-    period_k = 14
-    period_d = 6
-    smooth_k = 6
-    lowest_low = low.rolling(period_k).min()
-    highest_high = high.rolling(period_k).max()
+    # --- Stochastic ---
+    lowest_low = low.rolling(STOCH_PERIOD_K).min()
+    highest_high = high.rolling(STOCH_PERIOD_K).max()
     raw_k = ((close - lowest_low) / (highest_high - lowest_low).replace(0, np.nan)) * 100
-    df["stoch_k"] = raw_k.rolling(smooth_k).mean()
-    df["stoch_d"] = df["stoch_k"].rolling(period_d).mean()
+    df["stoch_k"] = raw_k.rolling(STOCH_SMOOTH_K).mean()
+    df["stoch_d"] = df["stoch_k"].rolling(STOCH_PERIOD_D).mean()
 
     # --- DMI Stochastic ---
-    dmi_length = 20
-    sto_length = 5
-
     hi_diff = high.diff()
     lo_diff = -low.diff()
     plus_dm = pd.Series(
@@ -82,42 +95,42 @@ def compute_rsi_scalping_indicators(df: pd.DataFrame) -> pd.DataFrame:
         (low - close.shift(1)).abs(),
     ], axis=1).max(axis=1)
 
-    atr_wwma = _wwma(tr, dmi_length)
-    plus_di = 100 * _wwma(plus_dm, dmi_length) / atr_wwma.replace(0, np.nan)
-    minus_di = 100 * _wwma(minus_dm, dmi_length) / atr_wwma.replace(0, np.nan)
+    atr_wwma = _wwma(tr, DMI_LENGTH)
+    plus_di = 100 * _wwma(plus_dm, DMI_LENGTH) / atr_wwma.replace(0, np.nan)
+    minus_di = 100 * _wwma(minus_dm, DMI_LENGTH) / atr_wwma.replace(0, np.nan)
     osc = plus_di - minus_di
 
     # DMI Stoch calculation
-    osc_hi = osc.rolling(sto_length).max()
-    osc_lo = osc.rolling(sto_length).min()
+    osc_hi = osc.rolling(DMI_STOCH_LENGTH).max()
+    osc_lo = osc.rolling(DMI_STOCH_LENGTH).min()
     osc_range = osc_hi - osc_lo
-    dmi_stoch_sum_num = (osc - osc_lo).rolling(sto_length).sum()
-    dmi_stoch_sum_den = osc_range.rolling(sto_length).sum()
+    dmi_stoch_sum_num = (osc - osc_lo).rolling(DMI_STOCH_LENGTH).sum()
+    dmi_stoch_sum_den = osc_range.rolling(DMI_STOCH_LENGTH).sum()
     df["dmi_stoch"] = (dmi_stoch_sum_num / dmi_stoch_sum_den.replace(0, np.nan)) * 100
     df["dmi_stoch"] = df["dmi_stoch"].fillna(50)
 
     # --- Cross signals with filters ---
     prev_dmi = df["dmi_stoch"].shift(1)
-    raw_cross_up = (prev_dmi < 10) & (df["dmi_stoch"] > 10)
-    raw_cross_down = (prev_dmi > 90) & (df["dmi_stoch"] < 90)
+    raw_cross_up = (prev_dmi < DMI_CROSS_UP_THRESHOLD) & (df["dmi_stoch"] > DMI_CROSS_UP_THRESHOLD)
+    raw_cross_down = (prev_dmi > DMI_CROSS_DOWN_THRESHOLD) & (df["dmi_stoch"] < DMI_CROSS_DOWN_THRESHOLD)
 
-    # Filter 1: RSI confirmation — BUY needs RSI < 45, SELL needs RSI > 55
-    rsi_buy_ok = df["rsi_scalp"] < 45
-    rsi_sell_ok = df["rsi_scalp"] > 55
+    # Filter 1: RSI confirmation
+    rsi_buy_ok = df["rsi_scalp"] < RSI_BUY_FILTER
+    rsi_sell_ok = df["rsi_scalp"] > RSI_SELL_FILTER
 
-    # Filter 2: Stochastic agreement — BUY needs K < 50, SELL needs K > 50
-    stoch_buy_ok = df["stoch_k"] < 50
-    stoch_sell_ok = df["stoch_k"] > 50
+    # Filter 2: Stochastic agreement
+    stoch_buy_ok = df["stoch_k"] < STOCH_MIDLINE
+    stoch_sell_ok = df["stoch_k"] > STOCH_MIDLINE
 
     filtered_up = raw_cross_up & rsi_buy_ok & stoch_buy_ok
     filtered_down = raw_cross_down & rsi_sell_ok & stoch_sell_ok
 
-    # Filter 3: Minimum 5 candles between signals (debounce)
+    # Filter 3: Minimum candles between signals (debounce)
     df["cross_up"] = 0
     df["cross_down"] = 0
     last_signal_idx = -10
     for i in range(len(df)):
-        if i - last_signal_idx < 5:
+        if i - last_signal_idx < SIGNAL_DEBOUNCE_COUNT:
             continue
         if filtered_up.iloc[i]:
             df.iloc[i, df.columns.get_loc("cross_up")] = 1
@@ -173,6 +186,23 @@ class RSIScalpingStrategy(BaseStrategy):
         return None
 
     def _build_long(self, asset, timeframe, df, last, close, atr, rsi, stoch_k, dmi_stoch):
+        """Build a LONG SignalResult from RSI scalping indicators.
+
+        Args:
+            asset: Trading pair symbol.
+            timeframe: Candle timeframe (e.g. "1h").
+            df: Full DataFrame with computed indicators.
+            last: Last row of the DataFrame.
+            close: Current close price.
+            atr: Current ATR(14) value for SL/TP sizing.
+            rsi: Current RSI scalping value.
+            stoch_k: Current Stochastic %K value.
+            dmi_stoch: Current DMI Stochastic value.
+
+        Returns:
+            SignalResult with LONG direction, ATR-based SL/TP levels,
+            and confidence derived from oscillator confluence.
+        """
         factors = [
             {"name": "DMI Stoch Cross Up (<10→>10)", "weight": 0.4, "score": 0.9, "label": "BULLISH"},
         ]
@@ -205,6 +235,23 @@ class RSIScalpingStrategy(BaseStrategy):
         )
 
     def _build_short(self, asset, timeframe, df, last, close, atr, rsi, stoch_k, dmi_stoch):
+        """Build a SHORT SignalResult from RSI scalping indicators.
+
+        Args:
+            asset: Trading pair symbol.
+            timeframe: Candle timeframe (e.g. "1h").
+            df: Full DataFrame with computed indicators.
+            last: Last row of the DataFrame.
+            close: Current close price.
+            atr: Current ATR(14) value for SL/TP sizing.
+            rsi: Current RSI scalping value.
+            stoch_k: Current Stochastic %K value.
+            dmi_stoch: Current DMI Stochastic value.
+
+        Returns:
+            SignalResult with SHORT direction, ATR-based SL/TP levels,
+            and confidence derived from oscillator confluence.
+        """
         factors = [
             {"name": "DMI Stoch Cross Down (>90→<90)", "weight": 0.4, "score": 0.9, "label": "BEARISH"},
         ]
@@ -235,6 +282,17 @@ class RSIScalpingStrategy(BaseStrategy):
         )
 
     def _calc_confidence(self, factors, rsi, dmi_stoch, direction):
+        """Calculate signal confidence from weighted factors with RSI boost.
+
+        Args:
+            factors: List of factor dicts with 'weight' and 'score' keys.
+            rsi: Current RSI value for extreme-level bonus.
+            dmi_stoch: Current DMI Stochastic value (unused, reserved).
+            direction: "LONG" or "SHORT" to determine RSI boost direction.
+
+        Returns:
+            Confidence score as a float between 0 and 95.
+        """
         weighted = sum(f["weight"] * f["score"] for f in factors)
         total_w = sum(f["weight"] for f in factors)
         base = (weighted / total_w * 100) if total_w > 0 else 50

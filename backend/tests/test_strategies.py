@@ -21,6 +21,42 @@ from app.data.processors.feature_engineer import compute_features
 # --- Fixtures ---
 
 
+@pytest.fixture
+def ohlcv_bull_100() -> pd.DataFrame:
+    """Fixture: 100-row bullish OHLCV DataFrame with realistic crypto prices."""
+    return _make_ohlcv(n=100, trend="bull")
+
+
+@pytest.fixture
+def ohlcv_bear_100() -> pd.DataFrame:
+    """Fixture: 100-row bearish OHLCV DataFrame with realistic crypto prices."""
+    return _make_ohlcv(n=100, trend="bear")
+
+
+@pytest.fixture
+def ohlcv_flat_100() -> pd.DataFrame:
+    """Fixture: 100-row flat/ranging OHLCV DataFrame with realistic crypto prices."""
+    return _make_ohlcv(n=100, trend="flat")
+
+
+@pytest.fixture
+def ohlcv_bull_300() -> pd.DataFrame:
+    """Fixture: 300-row bullish OHLCV DataFrame with realistic crypto prices."""
+    return _make_ohlcv(n=300, trend="bull")
+
+
+@pytest.fixture
+def featured_bull_300() -> pd.DataFrame:
+    """Fixture: 300-row bullish OHLCV with computed technical features."""
+    return _make_featured_df(n=300, trend="bull")
+
+
+@pytest.fixture
+def featured_bear_300() -> pd.DataFrame:
+    """Fixture: 300-row bearish OHLCV with computed technical features."""
+    return _make_featured_df(n=300, trend="bear")
+
+
 def _make_ohlcv(n: int = 300, trend: str = "bull") -> pd.DataFrame:
     """Generate synthetic OHLCV data for testing."""
     np.random.seed(42)
@@ -410,6 +446,146 @@ class TestBacktesting:
 
 
 # --- On-Chain Fetcher Tests ---
+
+
+class TestRSIScalping:
+    """Tests for RSIScalpingStrategy."""
+
+    def test_compatible_with_all_regimes(self):
+        from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+
+        strategy = RSIScalpingStrategy()
+        for regime in ["TREND_BULL", "TREND_BEAR", "CONSOLIDATION", "HIGH_VOL_CHOPPY"]:
+            assert strategy.is_compatible(regime), f"Should be compatible with {regime}"
+
+    def test_no_signal_on_insufficient_data(self):
+        from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+
+        strategy = RSIScalpingStrategy()
+        # Less than 30 candles — strategy requires at least 30
+        df = _make_featured_df(300, "bull").head(20)
+        ctx = MarketContext(regime="CONSOLIDATION")
+        signal = strategy.generate_signal("BTC/USDT", "1h", df, ctx)
+        assert signal is None
+
+    def test_no_signal_on_empty_data(self):
+        from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+        import pandas as pd
+
+        strategy = RSIScalpingStrategy()
+        ctx = MarketContext(regime="TREND_BULL")
+        signal = strategy.generate_signal("BTC/USDT", "1h", pd.DataFrame(), ctx)
+        assert signal is None
+
+    def test_signal_generation_with_valid_data(self):
+        from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+
+        strategy = RSIScalpingStrategy()
+        df = _make_featured_df(300, "bull")
+        ctx = MarketContext(regime="TREND_BULL", regime_confidence=80)
+        signal = strategy.generate_signal("BTC/USDT", "1h", df, ctx)
+        # Signal may or may not fire depending on indicator conditions
+        if signal is not None:
+            assert signal.direction in ("LONG", "SHORT")
+            assert signal.confidence >= strategy.min_confidence or signal.confidence >= 0
+            assert signal.entry_price > 0
+            assert signal.strategy_name == "rsi_scalping"
+            assert signal.take_profit_1 > 0
+            assert signal.stop_loss > 0
+            assert len(signal.factors) > 0
+
+    def test_compute_indicators_columns(self):
+        from app.ai.strategies.rsi_scalping import compute_rsi_scalping_indicators
+
+        df = _make_ohlcv(100, "bull")
+        result = compute_rsi_scalping_indicators(df)
+        for col in ["rsi_scalp", "stoch_k", "stoch_d", "dmi_stoch", "cross_up", "cross_down"]:
+            assert col in result.columns, f"Missing indicator column: {col}"
+
+
+class TestTrendTrader:
+    """Tests for TrendTraderStrategy."""
+
+    def test_compatible_with_all_regimes(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+
+        strategy = TrendTraderStrategy()
+        for regime in ["TREND_BULL", "TREND_BEAR", "CONSOLIDATION", "HIGH_VOL_CHOPPY"]:
+            assert strategy.is_compatible(regime), f"Should be compatible with {regime}"
+
+    def test_no_signal_on_insufficient_data(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+
+        strategy = TrendTraderStrategy()
+        # Less than 200 candles — strategy requires at least 200
+        df = _make_featured_df(300, "bull").head(100)
+        ctx = MarketContext(regime="TREND_BULL")
+        signal = strategy.generate_signal("BTC/USDT", "4h", df, ctx)
+        assert signal is None
+
+    def test_no_signal_on_empty_data(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+        import pandas as pd
+
+        strategy = TrendTraderStrategy()
+        ctx = MarketContext(regime="TREND_BULL")
+        signal = strategy.generate_signal("BTC/USDT", "4h", pd.DataFrame(), ctx)
+        assert signal is None
+
+    def test_signal_generation_with_valid_data(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+
+        strategy = TrendTraderStrategy()
+        df = _make_featured_df(300, "bull")
+        ctx = MarketContext(regime="TREND_BULL", regime_confidence=85)
+        signal = strategy.generate_signal("BTC/USDT", "4h", df, ctx)
+        # Signal may or may not fire depending on Ichimoku/Fib confluence
+        if signal is not None:
+            assert signal.direction in ("LONG", "SHORT")
+            assert signal.entry_price > 0
+            assert signal.stop_loss > 0
+            assert signal.take_profit_1 > 0
+            assert signal.take_profit_2 > 0
+            assert signal.risk_reward >= 0
+            assert signal.strategy_name == "trend_trader"
+            assert len(signal.factors) > 0
+            # Trend trader always includes partial TP schedule
+            assert len(signal.partial_tp_schedule) == 3
+
+    def test_signal_generation_bear_data(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+
+        strategy = TrendTraderStrategy()
+        df = _make_featured_df(300, "bear")
+        ctx = MarketContext(regime="TREND_BEAR", regime_confidence=80)
+        signal = strategy.generate_signal("BTC/USDT", "4h", df, ctx)
+        if signal is not None:
+            assert signal.direction in ("LONG", "SHORT")
+            assert signal.strategy_name == "trend_trader"
+
+    def test_fib_levels_computation(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+
+        strategy = TrendTraderStrategy()
+        df = _make_featured_df(300, "bull")
+        fib = strategy._compute_fib_levels(df)
+        assert isinstance(fib, dict)
+        if fib:
+            assert "0.0" in fib
+            assert "100.0" in fib
+            assert fib["100.0"] >= fib["0.0"]
+
+    def test_sr_levels_computation(self):
+        from app.ai.strategies.trend_trader import TrendTraderStrategy
+
+        strategy = TrendTraderStrategy()
+        df = _make_featured_df(300, "bull")
+        sr = strategy._compute_sr_levels(df)
+        assert isinstance(sr, list)
+        for level in sr:
+            assert "price" in level
+            assert "touches" in level
+            assert level["touches"] >= strategy.SR_TOUCH_MIN
 
 
 class TestOnChainScoring:

@@ -37,7 +37,13 @@ function getChartCount(mode: LayoutMode): number {
   }
 }
 
-export function MultiChart({ onAssetChange }: { onAssetChange?: (asset: string, tf: string) => void }) {
+interface MultiChartProps {
+  onAssetChange?: (asset: string, tf: string) => void;
+  defaultAsset?: string;
+  defaultTimeframe?: string;
+}
+
+export function MultiChart({ onAssetChange, defaultAsset, defaultTimeframe }: MultiChartProps) {
   const [layout, setLayoutState] = useState<LayoutMode>(() => {
     const saved = localStorage.getItem("chart-layout");
     return (saved as LayoutMode) || "1";
@@ -131,6 +137,8 @@ export function MultiChart({ onAssetChange }: { onAssetChange?: (asset: string, 
               onAssetChange={i === 0 ? onAssetChange : undefined}
               activePosition={allSignals}
               compact={chartCount > 1}
+              defaultAsset={i === 0 ? defaultAsset : undefined}
+              defaultTimeframe={i === 0 ? defaultTimeframe : undefined}
             />
           </div>
         ))}

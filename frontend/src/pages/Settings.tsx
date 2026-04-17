@@ -10,6 +10,7 @@ import {
 import type { UserSettings } from "../types";
 import { CardSkeleton } from "../components/ui/Skeleton";
 import { SystemHealth } from "../components/Dashboard/SystemHealth";
+import { settingsFormSchema } from "../lib/validation";
 
 const AVAILABLE_ASSETS = [
   "BTC/USDT",
@@ -49,6 +50,7 @@ export function SettingsPage() {
   const [notifications, setNotifications] = useState(true);
   const [enabledAssets, setEnabledAssets] = useState<string[]>([]);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (settings) {
@@ -83,14 +85,32 @@ export function SettingsPage() {
   });
 
   const handleSave = () => {
-    saveMutation.mutate({
-      capital,
+    setValidationErrors({});
+
+    const payload = {
+      capital: capital || null,
       risk_per_trade_pct: riskPct,
       max_drawdown_pct: maxDD,
       telegram_chat_id: telegramId || null,
       notifications_enabled: notifications,
       enabled_assets: enabledAssets,
-    });
+    };
+
+    const result = settingsFormSchema.safeParse(payload);
+
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path.join(".");
+        if (!errors[key]) {
+          errors[key] = issue.message;
+        }
+      }
+      setValidationErrors(errors);
+      return;
+    }
+
+    saveMutation.mutate(payload);
   };
 
   const toggleAsset = (asset: string) => {
@@ -348,6 +368,18 @@ export function SettingsPage() {
 
       {/* System Health */}
       <SystemHealth />
+
+      {/* Validation Errors */}
+      {Object.keys(validationErrors).length > 0 && (
+        <div className="rounded-lg border border-bearish/30 bg-bearish/10 p-4">
+          <p className="mb-1 text-sm font-medium text-bearish">Validation errors:</p>
+          <ul className="list-inside list-disc text-sm text-bearish/80">
+            {Object.entries(validationErrors).map(([field, message]) => (
+              <li key={field}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Save Button */}
       <div className="flex justify-end">

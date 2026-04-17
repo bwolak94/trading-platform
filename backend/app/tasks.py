@@ -1,16 +1,16 @@
 """Celery task definitions and configuration."""
 
 import asyncio
-import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from celery import Celery
-from sqlalchemy import select, and_
+from sqlalchemy import select, func, and_
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 celery_app = Celery(
     "trading_ai",
@@ -50,6 +50,10 @@ celery_app.conf.update(
 
 DEFAULT_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 DEFAULT_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1D"]
+
+# Risk engine limits
+MAX_DAILY_LOSS_USD = Decimal("500.00")
+MAX_CONCURRENT_SIGNALS = 10
 
 
 def _run_async(coro):
@@ -157,6 +161,70 @@ async def _fetch_onchain():
         logger.error("On-chain fetch failed: %s", exc)
 
 
+async def check_daily_loss_limit(session) -> bool:
+    """Check whether today's realised losses from SL-hit signals are within the daily limit.
+
+    Queries all signals that were updated today with status 'SL_HIT' and sums
+    the estimated loss per signal (entry_price - stop_loss) * position_size_pct / 100.
+
+    Returns True if within limit, False if the daily loss limit has been exceeded.
+    """
+    from app.models.signal import Signal as SignalModel
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    result = await session.execute(
+        select(SignalModel).where(
+            and_(
+                SignalModel.status == "SL_HIT",
+                SignalModel.updated_at >= today_start,
+            )
+        )
+    )
+    sl_signals = result.scalars().all()
+
+    total_loss = Decimal("0")
+    for sig in sl_signals:
+        if sig.entry_price is None or sig.stop_loss is None or sig.position_size_pct is None:
+            continue
+        price_diff = abs(sig.entry_price - sig.stop_loss)
+        estimated_loss = price_diff * sig.position_size_pct / Decimal("100")
+        total_loss += estimated_loss
+
+    if total_loss >= MAX_DAILY_LOSS_USD:
+        logger.warning(
+            "Daily loss limit exceeded: $%.2f >= $%.2f — skipping signal generation",
+            total_loss, MAX_DAILY_LOSS_USD,
+        )
+        return False
+
+    return True
+
+
+async def check_max_concurrent(session) -> bool:
+    """Check whether the number of currently active signals is under the maximum.
+
+    Returns True if under the limit, False if at or above the limit.
+    """
+    from app.models.signal import Signal as SignalModel
+
+    result = await session.execute(
+        select(func.count()).select_from(SignalModel).where(
+            SignalModel.status == "ACTIVE"
+        )
+    )
+    active_count = result.scalar_one()
+
+    if active_count >= MAX_CONCURRENT_SIGNALS:
+        logger.warning(
+            "Max concurrent signals reached: %d >= %d — skipping signal generation",
+            active_count, MAX_CONCURRENT_SIGNALS,
+        )
+        return False
+
+    return True
+
+
 async def _run_signal_pipeline():
     """Execute the full signal generation pipeline.
 
@@ -185,6 +253,13 @@ async def _run_signal_pipeline():
         # Check kill switch
         if await risk_engine.check_kill_switch(default_user_id, session):
             logger.info("Kill switch active — skipping signal pipeline")
+            return
+
+        # Risk engine checks: daily loss limit and concurrent signal cap
+        if not await check_daily_loss_limit(session):
+            return
+
+        if not await check_max_concurrent(session):
             return
 
         for symbol in DEFAULT_SYMBOLS:

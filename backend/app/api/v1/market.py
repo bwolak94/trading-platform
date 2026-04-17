@@ -387,7 +387,20 @@ async def get_indicators(
     ichimoku_chikou = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ichimoku_chikou"]) if not pd.isna(v)]
 
     # Fibonacci levels
-    from app.data.processors.feature_engineer import compute_fibonacci_levels, compute_support_resistance, compute_money_flow_markers
+    from app.data.processors.feature_engineer import compute_fibonacci_levels, compute_support_resistance, compute_money_flow_markers, compute_divergences
+    from app.data.processors.pattern_detector import detect_patterns
+
+    # Chart patterns (Double Top/Bottom, H&S, Triangles)
+    raw_patterns = detect_patterns(featured)
+    chart_patterns = []
+    for pat in raw_patterns:
+        entry: dict = {**pat}
+        if pat["start_idx"] < len(times):
+            entry["start_time"] = times[pat["start_idx"]]
+        if pat["end_idx"] < len(times):
+            entry["end_time"] = times[pat["end_idx"]]
+        chart_patterns.append(entry)
+
     fibonacci = compute_fibonacci_levels(featured, lookback=100)
 
     # Support / Resistance levels
@@ -395,6 +408,14 @@ async def get_indicators(
 
     # Money Flow markers
     money_flow_markers = compute_money_flow_markers(featured)
+
+    # VWAP line and bands
+    vwap = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["vwap"]) if not pd.isna(v)]
+    vwap_upper_1 = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["vwap_upper_1"]) if not pd.isna(v)]
+    vwap_lower_1 = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["vwap_lower_1"]) if not pd.isna(v)]
+
+    # Divergence scanner
+    divergences = compute_divergences(featured, lookback=50)
 
     # RSI Scalping indicators (Stochastic + DMI Stochastic)
     from app.ai.strategies.rsi_scalping import compute_rsi_scalping_indicators
@@ -446,6 +467,11 @@ async def get_indicators(
         "fibonacci": fibonacci,
         "support_resistance": support_resistance,
         "money_flow_markers": money_flow_markers,
+        "vwap": vwap,
+        "vwap_upper_1": vwap_upper_1,
+        "vwap_lower_1": vwap_lower_1,
+        "divergences": divergences,
+        "patterns": chart_patterns,
     }
 
 
@@ -660,6 +686,49 @@ async def get_recent_liquidations(
     return engine.get_recent_liquidations(symbol=asset.upper(), limit=limit)
 
 
+@router.get("/orderbook")
+async def get_orderbook(
+    symbol: str = Query(default="BTCUSDT", description="Trading pair symbol, e.g. BTCUSDT"),
+    limit: int = Query(default=100, ge=5, le=1000, description="Number of price levels per side"),
+) -> dict:
+    """Get order book depth snapshot from Binance.
+
+    Returns bids, asks (each as [price, qty] lists), spread, and timestamp.
+    """
+    from app.data.fetchers.orderbook_fetcher import OrderBookFetcher
+
+    fetcher = OrderBookFetcher()
+    try:
+        data = await fetcher.fetch_orderbook(symbol=symbol.upper(), limit=limit)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch order book: {exc}",
+        ) from exc
+    finally:
+        await fetcher.close()
+
+    bids = data.get("bids", [])
+    asks = data.get("asks", [])
+
+    # Compute spread from best bid/ask
+    spread = 0.0
+    best_bid = float(bids[0][0]) if bids else 0.0
+    best_ask = float(asks[0][0]) if asks else 0.0
+    if best_bid > 0 and best_ask > 0:
+        spread = best_ask - best_bid
+
+    return {
+        "bids": bids,
+        "asks": asks,
+        "spread": round(spread, 8),
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "timestamp": data.get("timestamp", 0),
+        "symbol": data.get("symbol", symbol.upper()),
+    }
+
+
 @router.get("/forex/status")
 async def get_forex_status() -> dict:
     """Get forex provider status — prices, tick counts, deltas."""
@@ -694,10 +763,101 @@ async def get_forex_ticks(
     }
 
 
-@router.get("/calendar")
-async def get_macro_calendar() -> dict:
-    """Get upcoming macro economic events.
+@router.get("/funding-rates")
+async def get_funding_rates(
+    symbols: str | None = Query(
+        default=None,
+        description="Comma-separated trading pair symbols (e.g. BTCUSDT,ETHUSDT). Defaults to BTC, ETH, SOL.",
+    ),
+) -> list[dict]:
+    """Get current funding rates from Binance Futures.
 
-    Placeholder — requires external calendar API integration.
+    Returns symbol, funding_rate, next_funding_time, and mark_price
+    for each requested symbol.
     """
-    return {"data": []}
+    from app.data.fetchers.funding_rate_fetcher import FundingRateFetcher
+
+    symbol_list: list[str] | None = None
+    if symbols:
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    fetcher = FundingRateFetcher()
+    try:
+        return await fetcher.fetch_funding_rates(symbol_list)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch funding rates: {exc}",
+        ) from exc
+
+
+@router.get("/correlations")
+async def get_correlations(
+    symbols: str = Query(
+        default="BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT",
+        description="Comma-separated list of Binance trading pair symbols",
+    ),
+    timeframe: str = Query(default="4h", description="Kline interval (e.g. 1h, 4h, 1d)"),
+    lookback_days: int = Query(default=30, ge=1, le=365, description="Number of days of historical data"),
+) -> dict:
+    """Compute Pearson correlation matrix of close-price returns for the given symbols.
+
+    Useful for portfolio diversification analysis and detecting correlated moves.
+    """
+    from app.data.processors.correlation import compute_correlation_matrix
+
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if len(symbol_list) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least 2 symbols are required to compute correlations.",
+        )
+
+    return await compute_correlation_matrix(
+        symbols=symbol_list,
+        timeframe=timeframe,
+        lookback_days=lookback_days,
+    )
+
+
+@router.get("/calendar")
+async def get_macro_calendar(
+    hours_ahead: int = Query(default=24, ge=1, le=168, description="Hours ahead to look for events"),
+    impact: str | None = Query(default=None, description="Filter by impact level: HIGH, MEDIUM, LOW"),
+    currency: str | None = Query(default=None, description="Filter by currency, e.g. USD, EUR, GBP"),
+) -> dict:
+    """Get upcoming macro economic events from the economic calendar.
+
+    Returns scheduled economic releases (NFP, CPI, rate decisions, etc.)
+    with their impact level, forecast, and previous values.
+    """
+    from app.data.fetchers.macro_calendar import get_macro_calendar_fetcher
+
+    fetcher = get_macro_calendar_fetcher()
+
+    try:
+        result = await fetcher.fetch_upcoming_events(hours_ahead=hours_ahead)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch economic calendar: {exc}",
+        ) from exc
+
+    events = result.events
+
+    # Apply optional filters
+    if impact:
+        impact_upper = impact.upper()
+        events = [e for e in events if e.impact.value == impact_upper]
+
+    if currency:
+        currency_upper = currency.upper()
+        events = [e for e in events if e.currency.upper() == currency_upper]
+
+    return {
+        "events": [e.model_dump() for e in events],
+        "fetched_at": result.fetched_at,
+        "source": result.source,
+        "hours_ahead": result.hours_ahead,
+        "total": len(events),
+    }

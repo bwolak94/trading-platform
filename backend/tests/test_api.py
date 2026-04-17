@@ -248,6 +248,309 @@ class TestWebSocket:
 # --- Signal Aggregation Pipeline Test (end-to-end logic) ---
 
 
+class TestMarketIndicatorsEndpoint:
+    """Tests for GET /api/v1/market/indicators with mocked Binance data."""
+
+    def test_get_indicators_returns_200(self):
+        """Test indicators endpoint returns 200 with mocked Binance kline data."""
+        import numpy as np
+        from datetime import datetime, timezone, timedelta
+
+        n = 300
+        base_time = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        base_price = 40000.0
+        # Build fake Binance klines: [open_time, open, high, low, close, volume, ...]
+        fake_klines = []
+        for i in range(n):
+            t = base_time + i * 3600_000
+            c = base_price + i * 10 + np.random.randn() * 50
+            h = c + abs(np.random.randn() * 30)
+            l = c - abs(np.random.randn() * 30)
+            o = c + np.random.randn() * 10
+            v = abs(np.random.randn() * 500) + 100
+            fake_klines.append([t, str(o), str(h), str(l), str(c), str(v),
+                                t + 3600_000, "0", 0, "0", "0", "0"])
+
+        mock_response = AsyncMock()
+        mock_response.json.return_value = fake_klines
+        mock_response.raise_for_status = lambda: None
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.v1.market.httpx.AsyncClient", return_value=mock_client_instance):
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/market/indicators", params={
+                    "asset": "BTCUSDT",
+                    "interval": "1h",
+                    "limit": 300,
+                })
+                assert resp.status_code == 200
+                data = resp.json()
+                assert isinstance(data, dict)
+                # Should contain EMA and other indicator arrays
+                assert "ema_20" in data or "error" not in data
+
+
+class TestMarketKlinesEndpoint:
+    """Tests for GET /api/v1/market/klines with mocked Binance data."""
+
+    def test_get_klines_returns_200(self):
+        """Test klines endpoint returns 200 with candle data."""
+        import numpy as np
+        from datetime import datetime, timezone
+
+        n = 100
+        base_time = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        fake_klines = []
+        for i in range(n):
+            t = base_time + i * 3600_000
+            c = 40000 + i * 5
+            fake_klines.append([t, str(c - 10), str(c + 20), str(c - 20), str(c), str(500),
+                                t + 3600_000, "0", 0, "0", "0", "0"])
+
+        mock_response = AsyncMock()
+        mock_response.json.return_value = fake_klines
+        mock_response.raise_for_status = lambda: None
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.v1.market.httpx.AsyncClient", return_value=mock_client_instance):
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/market/klines", params={
+                    "asset": "BTCUSDT",
+                    "interval": "1h",
+                    "limit": 100,
+                })
+                assert resp.status_code == 200
+                data = resp.json()
+                assert isinstance(data, list)
+                assert len(data) == n
+                # Each candle should have expected keys
+                candle = data[0]
+                assert "time" in candle
+                assert "open" in candle
+                assert "high" in candle
+                assert "low" in candle
+                assert "close" in candle
+                assert "volume" in candle
+
+
+class TestAnalyzeRunEndpoint:
+    """Tests for GET /api/v1/analyze/run with mocked Binance data."""
+
+    def test_run_analysis_returns_200(self):
+        """Test analyze/run endpoint returns 200 with regime and signal data."""
+        import numpy as np
+        from datetime import datetime, timezone
+
+        n = 500
+        base_time = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        base_price = 40000.0
+        fake_klines = []
+        for i in range(n):
+            t = base_time + i * 14400_000  # 4h candles
+            c = base_price + i * 10 + np.random.randn() * 50
+            h = c + abs(np.random.randn() * 30)
+            l = c - abs(np.random.randn() * 30)
+            o = c + np.random.randn() * 10
+            v = abs(np.random.randn() * 500) + 100
+            fake_klines.append([t, str(o), str(h), str(l), str(c), str(v),
+                                t + 14400_000, "0", 0, "0", "0", "0"])
+
+        mock_response = AsyncMock()
+        mock_response.json.return_value = fake_klines
+        mock_response.status_code = 200
+        mock_response.raise_for_status = lambda: None
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.v1.analyze.httpx.AsyncClient", return_value=mock_client_instance):
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/analyze/run", params={
+                    "asset": "BTC/USDT",
+                    "timeframe": "4h",
+                })
+                assert resp.status_code == 200
+                data = resp.json()
+                assert isinstance(data, dict)
+                # Should contain regime info or an error key
+                assert "regime" in data or "error" in data
+
+    def test_run_analysis_invalid_asset(self):
+        """Test analyze/run returns 400 for invalid asset."""
+        with TestClient(app) as client:
+            resp = client.get("/api/v1/analyze/run", params={
+                "asset": "INVALID/PAIR",
+                "timeframe": "4h",
+            })
+            assert resp.status_code == 400
+
+
+class TestAsyncEndpoints:
+    """Async integration tests using httpx.AsyncClient."""
+
+    @pytest.mark.asyncio
+    async def test_health_async(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/api/v1/health")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_signals_async(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/api/v1/signals")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "data" in data
+            assert isinstance(data["data"], list)
+
+    @pytest.mark.asyncio
+    async def test_status_async(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/api/v1/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "system_status" in data
+
+    @pytest.mark.asyncio
+    async def test_indicators_async(self):
+        """Async test for GET /api/v1/market/indicators with mocked Binance data."""
+        import numpy as np
+        from datetime import datetime, timezone
+
+        n = 300
+        base_time = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        base_price = 40000.0
+        fake_klines = []
+        for i in range(n):
+            t = base_time + i * 3600_000
+            c = base_price + i * 10 + np.random.randn() * 50
+            h = c + abs(np.random.randn() * 30)
+            low = c - abs(np.random.randn() * 30)
+            o = c + np.random.randn() * 10
+            v = abs(np.random.randn() * 500) + 100
+            fake_klines.append([t, str(o), str(h), str(low), str(c), str(v),
+                                t + 3600_000, "0", 0, "0", "0", "0"])
+
+        mock_response = AsyncMock()
+        mock_response.json.return_value = fake_klines
+        mock_response.raise_for_status = lambda: None
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.v1.market.httpx.AsyncClient", return_value=mock_client_instance):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/v1/market/indicators", params={
+                    "asset": "BTCUSDT",
+                    "interval": "4h",
+                    "limit": 100,
+                })
+                assert resp.status_code == 200
+                data = resp.json()
+                assert isinstance(data, dict)
+
+    @pytest.mark.asyncio
+    async def test_klines_async(self):
+        """Async test for GET /api/v1/market/klines with mocked Binance data."""
+        import numpy as np
+        from datetime import datetime, timezone
+
+        n = 100
+        base_time = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        fake_klines = []
+        for i in range(n):
+            t = base_time + i * 3600_000
+            c = 40000 + i * 5
+            fake_klines.append([t, str(c - 10), str(c + 20), str(c - 20), str(c), str(500),
+                                t + 3600_000, "0", 0, "0", "0", "0"])
+
+        mock_response = AsyncMock()
+        mock_response.json.return_value = fake_klines
+        mock_response.raise_for_status = lambda: None
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.v1.market.httpx.AsyncClient", return_value=mock_client_instance):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/v1/market/klines", params={
+                    "asset": "BTCUSDT",
+                    "interval": "4h",
+                    "limit": 100,
+                })
+                assert resp.status_code == 200
+                data = resp.json()
+                assert isinstance(data, list)
+                assert len(data) == n
+                candle = data[0]
+                assert "time" in candle
+                assert "open" in candle
+                assert "close" in candle
+
+    @pytest.mark.asyncio
+    async def test_analyze_run_async(self):
+        """Async test for GET /api/v1/analyze/run with mocked Binance data."""
+        import numpy as np
+        from datetime import datetime, timezone
+
+        n = 500
+        base_time = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        base_price = 40000.0
+        fake_klines = []
+        for i in range(n):
+            t = base_time + i * 14400_000  # 4h candles
+            c = base_price + i * 10 + np.random.randn() * 50
+            h = c + abs(np.random.randn() * 30)
+            low = c - abs(np.random.randn() * 30)
+            o = c + np.random.randn() * 10
+            v = abs(np.random.randn() * 500) + 100
+            fake_klines.append([t, str(o), str(h), str(low), str(c), str(v),
+                                t + 14400_000, "0", 0, "0", "0", "0"])
+
+        mock_response = AsyncMock()
+        mock_response.json.return_value = fake_klines
+        mock_response.status_code = 200
+        mock_response.raise_for_status = lambda: None
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.get.return_value = mock_response
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.api.v1.analyze.httpx.AsyncClient", return_value=mock_client_instance):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/api/v1/analyze/run", params={
+                    "asset": "BTC/USDT",
+                    "timeframe": "4h",
+                })
+                assert resp.status_code == 200
+                data = resp.json()
+                assert isinstance(data, dict)
+                assert "regime" in data or "error" in data
+
+
 class TestSignalPipeline:
     def test_aggregator_end_to_end(self):
         """Test signal aggregation from data through to signal output."""

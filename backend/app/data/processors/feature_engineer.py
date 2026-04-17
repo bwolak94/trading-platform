@@ -60,9 +60,11 @@ def _compute_features_impl(df: pd.DataFrame) -> pd.DataFrame:
     _add_volume_indicators(df)
     _add_derived_indicators(df)
     _add_ichimoku_indicators(df)
+    df = _add_vwap_indicator(df)
 
     # Drop NaN but preserve Ichimoku columns (they have intentional NaN from shift)
-    ichimoku_cols = ["ichimoku_tenkan", "ichimoku_kijun", "ichimoku_senkou_a", "ichimoku_senkou_b", "ichimoku_chikou"]
+    ichimoku_cols = ["ichimoku_tenkan", "ichimoku_kijun", "ichimoku_senkou_a", "ichimoku_senkou_b", "ichimoku_chikou",
+                     "vwap", "vwap_upper_1", "vwap_lower_1", "vwap_upper_2", "vwap_lower_2"]
     existing_ichimoku = [c for c in ichimoku_cols if c in df.columns]
     non_ichimoku = [c for c in df.columns if c not in existing_ichimoku]
     df.dropna(subset=non_ichimoku, inplace=True)
@@ -220,6 +222,145 @@ def _add_ichimoku_indicators(df: pd.DataFrame) -> None:
     df["ichimoku_senkou_b"] = ((high.rolling(senkou_span * 2).max() + low.rolling(senkou_span * 2).min()) / 2).shift(senkou_span)
     # Chikou Span (close shifted back 26 periods)
     df["ichimoku_chikou"] = df["close"].shift(-senkou_span)
+
+
+def _add_vwap_indicator(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute VWAP with 1-sigma and 2-sigma bands.
+
+    VWAP = cumsum(typical_price * volume) / cumsum(volume).
+    Bands are derived from a rolling standard deviation of the
+    volume-weighted typical price, using a 20-period window.
+
+    Adds columns: vwap, vwap_upper_1, vwap_lower_1, vwap_upper_2, vwap_lower_2.
+    """
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
+    cum_vol = df["volume"].cumsum()
+    cum_tp_vol = (typical_price * df["volume"]).cumsum()
+
+    # Avoid division by zero for rows with no cumulative volume
+    vwap = np.where(cum_vol > 0, cum_tp_vol / cum_vol, typical_price)
+    df["vwap"] = vwap
+
+    # Rolling volume-weighted standard deviation of typical price (20-period)
+    window = 20
+    tp_sq_vol = (typical_price ** 2) * df["volume"]
+    cum_tp_sq_vol = tp_sq_vol.cumsum()
+    # variance = E[X^2] - E[X]^2, weighted by volume
+    rolling_cum_vol = df["volume"].rolling(window, min_periods=1).sum()
+    rolling_tp_vol = (typical_price * df["volume"]).rolling(window, min_periods=1).sum()
+    rolling_tp_sq_vol = tp_sq_vol.rolling(window, min_periods=1).sum()
+
+    rolling_mean = np.where(rolling_cum_vol > 0, rolling_tp_vol / rolling_cum_vol, 0)
+    rolling_mean_sq = np.where(rolling_cum_vol > 0, rolling_tp_sq_vol / rolling_cum_vol, 0)
+    variance = np.maximum(rolling_mean_sq - rolling_mean ** 2, 0)
+    std = np.sqrt(variance)
+
+    df["vwap_upper_1"] = df["vwap"] + std
+    df["vwap_lower_1"] = df["vwap"] - std
+    df["vwap_upper_2"] = df["vwap"] + 2 * std
+    df["vwap_lower_2"] = df["vwap"] - 2 * std
+
+    return df
+
+
+def compute_divergences(df: pd.DataFrame, lookback: int = 50) -> list[dict]:
+    """Detect RSI and MACD histogram divergences on price.
+
+    Scans for local swing lows/highs in price and the corresponding
+    indicator values, flagging bullish and bearish divergences.
+
+    Returns a list of dicts with keys:
+        type        — 'bullish' or 'bearish'
+        indicator   — 'RSI' or 'MACD'
+        start_idx   — integer index of the first swing point
+        end_idx     — integer index of the second swing point
+        strength    — float 0-1 measuring the magnitude of divergence
+    """
+    required_cols = {"close", "rsi_14", "macd_diff"}
+    if not required_cols.issubset(df.columns):
+        logger.warning("compute_divergences: missing columns %s", required_cols - set(df.columns))
+        return []
+
+    lookback = min(lookback, len(df))
+    recent = df.tail(lookback).copy()
+
+    if len(recent) < 10:
+        return []
+
+    divergences: list[dict] = []
+    close = recent["close"].values
+    indices = recent.index.tolist()
+
+    indicator_map = {
+        "RSI": recent["rsi_14"].values,
+        "MACD": recent["macd_diff"].values,
+    }
+
+    for indicator_name, indicator_vals in indicator_map.items():
+        # Find local swing lows (for bullish divergence)
+        swing_lows = _find_swing_points(close, mode="low")
+        for i in range(len(swing_lows) - 1):
+            a, b = swing_lows[i], swing_lows[i + 1]
+            if np.isnan(indicator_vals[a]) or np.isnan(indicator_vals[b]):
+                continue
+            # Bullish: price makes lower low, indicator makes higher low
+            if close[b] < close[a] and indicator_vals[b] > indicator_vals[a]:
+                price_change = abs(close[b] - close[a]) / close[a]
+                ind_change = abs(indicator_vals[b] - indicator_vals[a])
+                strength = min(1.0, (price_change + ind_change / 100) * 5)
+                divergences.append({
+                    "type": "bullish",
+                    "indicator": indicator_name,
+                    "start_idx": int(indices[a]),
+                    "end_idx": int(indices[b]),
+                    "strength": round(strength, 2),
+                })
+
+        # Find local swing highs (for bearish divergence)
+        swing_highs = _find_swing_points(close, mode="high")
+        for i in range(len(swing_highs) - 1):
+            a, b = swing_highs[i], swing_highs[i + 1]
+            if np.isnan(indicator_vals[a]) or np.isnan(indicator_vals[b]):
+                continue
+            # Bearish: price makes higher high, indicator makes lower high
+            if close[b] > close[a] and indicator_vals[b] < indicator_vals[a]:
+                price_change = abs(close[b] - close[a]) / close[a]
+                ind_change = abs(indicator_vals[b] - indicator_vals[a])
+                strength = min(1.0, (price_change + ind_change / 100) * 5)
+                divergences.append({
+                    "type": "bearish",
+                    "indicator": indicator_name,
+                    "start_idx": int(indices[a]),
+                    "end_idx": int(indices[b]),
+                    "strength": round(strength, 2),
+                })
+
+    return divergences
+
+
+def _find_swing_points(data: np.ndarray, mode: str = "low", order: int = 3) -> list[int]:
+    """Find local swing highs or lows in a 1-D array.
+
+    Args:
+        data: Price or indicator values.
+        mode: 'low' for swing lows, 'high' for swing highs.
+        order: Number of neighbours on each side to compare.
+
+    Returns:
+        List of integer indices where swing points occur.
+    """
+    swings: list[int] = []
+    for i in range(order, len(data) - order):
+        if np.isnan(data[i]):
+            continue
+        window = data[i - order: i + order + 1]
+        if np.any(np.isnan(window)):
+            continue
+        if mode == "low" and data[i] == np.min(window):
+            swings.append(i)
+        elif mode == "high" and data[i] == np.max(window):
+            swings.append(i)
+    return swings
 
 
 def compute_fibonacci_levels(df: pd.DataFrame, lookback: int = 100) -> dict:
@@ -389,4 +530,4 @@ def compute_money_flow_markers(df: pd.DataFrame) -> list[dict]:
 
 def _feature_count() -> int:
     """Return total number of features this module produces."""
-    return 27
+    return 32

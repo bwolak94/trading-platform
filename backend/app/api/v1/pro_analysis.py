@@ -16,6 +16,7 @@ from app.ai.regime.classifier import RegimeClassifier
 from app.ai.strategies.smc_strategy import find_order_blocks, find_fair_value_gaps
 from app.core.config import settings
 from app.data.processors.feature_engineer import compute_features
+from app.schemas.market import ProAnalysisRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pro-analysis", tags=["pro-analysis"])
@@ -88,14 +89,6 @@ If probability > 60%:
 - Upcoming events that could affect the trade
 
 Always be specific with numbers. Never say "around" — give exact levels. Format your response with clear markdown headers and tables. If the user provides a chart image, analyze the visible patterns, candlesticks, and any drawn indicators."""
-
-
-class ProAnalysisRequest(BaseModel):
-    message: str
-    asset: str = "BTC/USDT"
-    timeframe: str = "4h"
-    image_base64: str | None = None  # Optional chart screenshot
-    history: list[dict[str, str]] = []
 
 
 class ProAnalysisResponse(BaseModel):

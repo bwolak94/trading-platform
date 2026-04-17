@@ -14,6 +14,7 @@ import {
   runBacktest,
 } from "../api/client";
 import type { BacktestRequest, BacktestResult } from "../types";
+import { backtestFormSchema } from "../lib/validation";
 
 const STRATEGIES = [
   { value: "trend_following", label: "Trend Following" },
@@ -37,6 +38,7 @@ export function BacktestPage() {
   });
 
   const [selectedResult, setSelectedResult] = useState<BacktestResult | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const resultsQuery = useQuery({
     queryKey: ["backtestResults"],
@@ -52,6 +54,30 @@ export function BacktestPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationErrors({});
+
+    const result = backtestFormSchema.safeParse({
+      strategy: form.strategy,
+      asset: form.asset,
+      timeframe: form.timeframe,
+      start_date: form.from_date,
+      end_date: form.to_date,
+      initial_capital: form.initial_capital,
+      risk_per_trade_pct: form.risk_per_trade_pct,
+    });
+
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path.join(".");
+        if (!errors[key]) {
+          errors[key] = issue.message;
+        }
+      }
+      setValidationErrors(errors);
+      return;
+    }
+
     runMutation.mutate(form);
   };
 
@@ -124,6 +150,17 @@ export function BacktestPage() {
           </button>
         </div>
       </form>
+
+      {Object.keys(validationErrors).length > 0 && (
+        <div className="rounded-lg border border-bearish/30 bg-bearish/10 p-4">
+          <p className="mb-1 text-sm font-medium text-bearish">Validation errors:</p>
+          <ul className="list-inside list-disc text-sm text-bearish/80">
+            {Object.entries(validationErrors).map(([field, message]) => (
+              <li key={field}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {runMutation.isSuccess && (
         <p className="text-sm text-bullish">

@@ -67,6 +67,12 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks inspect ping --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     command: celery -A app.tasks worker --loglevel=info --concurrency=2
 
   celery-beat:
@@ -83,6 +89,12 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks inspect ping --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     command: celery -A app.tasks beat --loglevel=info
 
   frontend:

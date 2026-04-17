@@ -1,29 +1,37 @@
 """FastAPI application entry point."""
 
-import logging
 import time as _time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from urllib.parse import parse_qs, urlencode
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
-from app.api.v1 import agent, analyze, backtest, chat, intelligence, market, pro_analysis, settings, signals
+from app.api.v1 import agent, analyze, backtest, chat, intelligence, market, pro_analysis, settings, signals, strategy_params
 from app.core.config import settings as app_settings
+from app.core.exceptions import (
+    DataFetchError,
+    InsufficientDataError,
+    KillSwitchActiveError,
+    RateLimitError,
+    TradingPlatformError,
+)
+from app.core.logging import get_logger
 from app.core.websocket import manager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='{"time":"%(asctime)s","level":"%(levelname)s","module":"%(module)s","message":"%(message)s"}',
-    )
     logger.info("AI Trading Navigator starting up")
+
+    # Enforce production security — raises RuntimeError on insecure defaults
+    app_settings.enforce_production_security()
 
     # Validate production configuration
     prod_warnings = app_settings.validate_production()
@@ -152,10 +160,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware — validate origins before adding
+_cors_origins = [o.strip() for o in app_settings.CORS_ORIGINS.split(",")]
+
+if app_settings.ENVIRONMENT == "production" and "*" in _cors_origins:
+    logger.warning(
+        "CORS_ORIGINS contains wildcard '*' in production. "
+        "Restricting to localhost origins only for safety."
+    )
+    _cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=app_settings.CORS_ORIGINS.split(","),
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -189,16 +206,78 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# --- Sensitive value masking for request logging ---
+
+_SENSITIVE_HEADERS: frozenset[str] = frozenset({
+    "authorization", "api_key", "token", "secret", "x-api-key",
+})
+
+_SENSITIVE_QUERY_PARAMS: frozenset[str] = frozenset({
+    "api_key", "token", "secret",
+})
+
+_SENSITIVE_BODY_FIELDS: frozenset[str] = frozenset({
+    "api_key", "token", "secret", "password", "authorization",
+})
+
+_MASKED = "***MASKED***"
+
+
+def _mask_value(value: str) -> str:
+    """Mask a sensitive value, keeping the first 4 chars if longer than 8."""
+    if len(value) > 8:
+        return value[:4] + _MASKED
+    return _MASKED
+
+
+def _mask_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Return a copy of headers with sensitive values masked."""
+    return {
+        k: _mask_value(v) if k.lower() in _SENSITIVE_HEADERS else v
+        for k, v in headers.items()
+    }
+
+
+def _mask_query_string(query_string: str) -> str:
+    """Return query string with sensitive parameter values masked."""
+    if not query_string:
+        return query_string
+    parsed = parse_qs(query_string, keep_blank_values=True)
+    masked: dict[str, list[str]] = {}
+    for key, values in parsed.items():
+        if key.lower() in _SENSITIVE_QUERY_PARAMS:
+            masked[key] = [_mask_value(v) for v in values]
+        else:
+            masked[key] = values
+    return urlencode(masked, doseq=True)
+
+
+def _mask_body(body: dict[str, object]) -> dict[str, object]:
+    """Return a copy of request body dict with sensitive fields masked."""
+    return {
+        k: _mask_value(str(v)) if k.lower() in _SENSITIVE_BODY_FIELDS else v
+        for k, v in body.items()
+    }
+
+
 # Request logging middleware
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
-    """Log request method, path, status, and duration for non-health endpoints."""
+    """Log request method, path, status, and duration for non-health endpoints.
+
+    Sensitive headers, query parameters, and body fields are masked before logging.
+    """
     start = _time.time()
     response = await call_next(request)
     duration = round((_time.time() - start) * 1000, 1)
     if not request.url.path.startswith("/api/v1/health"):
-        logger.info('{"method":"%s","path":"%s","status":%d,"duration_ms":%.1f}',
-            request.method, request.url.path, response.status_code, duration)
+        masked_qs = _mask_query_string(request.url.query or "")
+        safe_path = f"{request.url.path}?{masked_qs}" if masked_qs else request.url.path
+        masked_hdrs = _mask_headers(dict(request.headers))
+        logger.info(
+            '{"method":"%s","path":"%s","status":%d,"duration_ms":%.1f,"headers":%s}',
+            request.method, safe_path, response.status_code, duration, masked_hdrs,
+        )
     return response
 
 
@@ -216,6 +295,46 @@ async def error_handling_middleware(request: Request, call_next):
         )
 
 
+# Custom exception handlers for TradingPlatformError hierarchy
+_ERROR_STATUS_MAP: dict[type, int] = {
+    DataFetchError: 502,
+    InsufficientDataError: 422,
+    KillSwitchActiveError: 503,
+    RateLimitError: 429,
+}
+
+
+@app.exception_handler(TradingPlatformError)
+async def trading_platform_error_handler(request: Request, exc: TradingPlatformError) -> JSONResponse:
+    """Return structured JSON responses for all TradingPlatformError subclasses."""
+    status_code = _ERROR_STATUS_MAP.get(type(exc), 500)
+
+    body: dict[str, object] = {
+        "error": exc.error_code,
+        "detail": exc.message,
+    }
+
+    # Include retry_after header and field for rate-limit errors
+    headers: dict[str, str] = {}
+    if isinstance(exc, RateLimitError):
+        body["retry_after"] = exc.retry_after
+        headers["Retry-After"] = str(int(exc.retry_after))
+
+    if isinstance(exc, DataFetchError):
+        body["source"] = exc.source
+
+    if isinstance(exc, InsufficientDataError):
+        body["required"] = exc.required
+        body["available"] = exc.available
+
+    logger.warning(
+        "TradingPlatformError handled",
+        extra={"error_code": exc.error_code, "status": status_code, "path": request.url.path},
+    )
+
+    return JSONResponse(status_code=status_code, content=body, headers=headers)
+
+
 # API routers
 app.include_router(agent.router, prefix="/api/v1")
 app.include_router(signals.router, prefix="/api/v1")
@@ -226,6 +345,7 @@ app.include_router(analyze.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(pro_analysis.router, prefix="/api/v1")
+app.include_router(strategy_params.router, prefix="/api/v1")
 
 
 # Health & status
@@ -244,6 +364,39 @@ async def system_status() -> dict:
         "system_status": "ACTIVE",
         "drawdown_pct": 0.0,
     }
+
+
+# --- Auth token endpoint ---
+
+class _TokenRequest(BaseModel):
+    """Request body for the token endpoint."""
+    username: str
+    password: str
+
+
+class _TokenResponse(BaseModel):
+    """Response body for the token endpoint."""
+    access_token: str
+    token_type: str = "bearer"
+
+
+@app.post("/api/v1/auth/token", response_model=_TokenResponse)
+async def login_for_access_token(body: _TokenRequest) -> _TokenResponse:
+    """Issue a JWT access token after validating credentials.
+
+    Credentials are checked against ADMIN_USERNAME / ADMIN_PASSWORD env vars.
+    This is a simple, single-user auth suitable for MVP / dev usage.
+    """
+    if (
+        body.username != app_settings.ADMIN_USERNAME
+        or body.password != app_settings.ADMIN_PASSWORD
+    ):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    from app.core.auth import create_access_token
+
+    token = create_access_token(data={"sub": body.username, "role": "admin"})
+    return _TokenResponse(access_token=token)
 
 
 # WebSocket

@@ -1,10 +1,10 @@
 """Signal Aggregator — weighted multi-source scoring and signal emission."""
 
-import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 
 from app.ai.regime.classifier import RegimeClassifier, RegimePrediction
@@ -15,8 +15,9 @@ from app.ai.strategies.smc_strategy import SMCStrategy
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 WEIGHTS = {
     "technical": 0.40,
@@ -45,6 +46,22 @@ def calculate_final_score(components: dict[str, float]) -> float:
 class SignalAggregator:
     """Aggregates signals from multiple strategies with multi-source weighting."""
 
+    STRATEGY_TIMEOUT_SECONDS = 10
+    SESSION_REDUCTION_FACTOR = 0.90
+    MACRO_MINUTES_THRESHOLD = 15
+
+    HIGHER_TF_MAP: dict[str, str] = {
+        "1m": "15m",
+        "5m": "1h",
+        "15m": "4h",
+        "1h": "4h",
+        "4h": "1d",
+    }
+
+    HTF_ALIGNED_MULTIPLIER = 1.2
+    HTF_NEUTRAL_MULTIPLIER = 1.0
+    HTF_OPPOSING_MULTIPLIER = 0.7
+
     def __init__(self) -> None:
         self._strategies: list[BaseStrategy] = [
             TrendFollowingStrategy(),
@@ -66,6 +83,7 @@ class SignalAggregator:
         onchain_score: float = 0.0,
         sentiment_score: float = 0.0,
         macro_events: list[dict[str, Any]] | None = None,
+        htf_data: Optional[pd.DataFrame] = None,
     ) -> SignalResult | None:
         """Run all compatible strategies and produce a single aggregated signal.
 
@@ -118,7 +136,7 @@ class SignalAggregator:
                 start = time.monotonic()
                 signal = strategy.generate_signal(asset, timeframe, market_data, context)
                 elapsed = time.monotonic() - start
-                if elapsed > 10:
+                if elapsed > self.STRATEGY_TIMEOUT_SECONDS:
                     logger.warning("Strategy %s took %.1fs for %s", strategy.name, elapsed, asset)
                 if signal:
                     raw_signals.append(signal)
@@ -143,6 +161,19 @@ class SignalAggregator:
             "macro": self._macro_score(macro_events),
         }
         final_confidence = calculate_final_score(components)
+
+        # 6. Apply higher-timeframe confluence multiplier
+        htf_multiplier = self._check_higher_tf_alignment(
+            asset, timeframe, best.direction, htf_data,
+        )
+        if htf_multiplier != self.HTF_NEUTRAL_MULTIPLIER:
+            final_confidence = round(
+                min(final_confidence * htf_multiplier, 100.0), 2,
+            )
+            logger.info(
+                "HTF confluence applied for %s: multiplier=%.2f, adjusted_conf=%.1f",
+                asset, htf_multiplier, final_confidence,
+            )
 
         # Adjust direction based on final score
         if final_confidence < 50:
@@ -169,7 +200,7 @@ class SignalAggregator:
 
         # Reduce confidence by 10% during off-hours or Asian session
         if session in ("OFF_HOURS", "ASIAN"):
-            final_confidence = final_confidence * 0.90
+            final_confidence = final_confidence * self.SESSION_REDUCTION_FACTOR
             logger.info(
                 "Off-hours/Asian session confidence reduction applied for %s: %.1f",
                 asset, final_confidence,
@@ -212,6 +243,65 @@ class SignalAggregator:
         )
         return final_signal
 
+    def _check_higher_tf_alignment(
+        self,
+        asset: str,
+        timeframe: str,
+        direction: str,
+        htf_data: Optional[pd.DataFrame] = None,
+    ) -> float:
+        """Check if the higher-timeframe trend aligns with the signal direction.
+
+        Uses EMA20 vs EMA50 crossover on the higher timeframe to determine trend.
+
+        Args:
+            asset: The asset symbol (used for logging).
+            timeframe: The signal's timeframe (e.g. '5m', '1h').
+            direction: Signal direction — 'LONG' or 'SHORT'.
+            htf_data: Optional OHLCV DataFrame for the higher timeframe.
+                      Must contain a 'close' column with enough rows for EMA50.
+
+        Returns:
+            Multiplier: 1.2 if aligned, 1.0 if neutral/no data, 0.7 if opposing.
+        """
+        higher_tf = self.HIGHER_TF_MAP.get(timeframe)
+        if higher_tf is None:
+            logger.debug("No higher TF mapping for %s — neutral multiplier", timeframe)
+            return self.HTF_NEUTRAL_MULTIPLIER
+
+        if htf_data is None or htf_data.empty or len(htf_data) < 50:
+            logger.debug(
+                "No sufficient HTF data for %s %s→%s — neutral multiplier",
+                asset, timeframe, higher_tf,
+            )
+            return self.HTF_NEUTRAL_MULTIPLIER
+
+        close = htf_data["close"].astype(float)
+        ema20 = close.ewm(span=20, adjust=False).mean()
+        ema50 = close.ewm(span=50, adjust=False).mean()
+
+        latest_ema20 = ema20.iloc[-1]
+        latest_ema50 = ema50.iloc[-1]
+
+        if np.isnan(latest_ema20) or np.isnan(latest_ema50):
+            return self.HTF_NEUTRAL_MULTIPLIER
+
+        htf_bullish = latest_ema20 > latest_ema50
+        signal_bullish = direction.upper() == "LONG"
+
+        if htf_bullish == signal_bullish:
+            logger.debug(
+                "HTF %s aligned with %s for %s — boost multiplier",
+                higher_tf, direction, asset,
+            )
+            return self.HTF_ALIGNED_MULTIPLIER
+
+        logger.debug(
+            "HTF %s opposes %s for %s — reduction multiplier",
+            higher_tf, direction, asset,
+        )
+        return self.HTF_OPPOSING_MULTIPLIER
+
     @staticmethod
     def _determine_market_session() -> str:
         """Determine the current market session based on UTC hour.
@@ -232,9 +322,9 @@ class SignalAggregator:
             return "OFF_HOURS"
 
     def _has_imminent_macro(self, events: list[dict[str, Any]]) -> bool:
-        """Check if a HIGH impact macro event is within 15 minutes."""
+        """Check if a HIGH impact macro event is within the threshold window."""
         now = datetime.now(timezone.utc)
-        cutoff = now + timedelta(minutes=15)
+        cutoff = now + timedelta(minutes=self.MACRO_MINUTES_THRESHOLD)
         for event in events:
             impact = event.get("impact", "").upper()
             event_time = event.get("time")

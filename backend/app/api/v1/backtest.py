@@ -4,27 +4,15 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.backtest_result import BacktestResult
+from app.schemas.market import BacktestRunRequest
 from app.schemas.signal import BacktestResultResponse
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
-
-
-class BacktestRunRequest(BaseModel):
-    """Request body for running a backtest."""
-
-    strategy: str
-    asset: str
-    timeframe: str
-    from_date: str
-    to_date: str
-    initial_capital: float = 10000.0
-    risk_per_trade_pct: float = 1.5
 
 
 @router.post("/run")

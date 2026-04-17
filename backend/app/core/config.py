@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production"
     CORS_ORIGINS: str = "http://localhost:5173"
 
+    # Auth (simple env-based credentials for the token endpoint)
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin"
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
@@ -53,6 +57,40 @@ class Settings(BaseSettings):
             if not self.ANTHROPIC_API_KEY:
                 warnings.append("ANTHROPIC_API_KEY not set")
         return warnings
+
+    def enforce_production_security(self) -> None:
+        """Raise RuntimeError if critical settings use default values in production.
+
+        This method should be called during application startup to prevent
+        deploying with insecure defaults.
+        """
+        if self.ENVIRONMENT != "production":
+            return
+
+        errors: list[str] = []
+
+        if self.SECRET_KEY == "change-me-in-production":
+            errors.append(
+                "SECRET_KEY is still the default value. "
+                "Set a strong, unique SECRET_KEY for production."
+            )
+
+        if self.DATABASE_URL == "postgresql+asyncpg://user:pass@localhost:5432/trading_ai":
+            errors.append(
+                "DATABASE_URL is still the default value. "
+                "Configure a production database connection string."
+            )
+
+        if self.REDIS_URL == "redis://localhost:6379/0":
+            errors.append(
+                "REDIS_URL is still the default value. "
+                "Configure a production Redis connection string."
+            )
+
+        if errors:
+            raise RuntimeError(
+                "Production security check failed:\n- " + "\n- ".join(errors)
+            )
 
 
 settings = Settings()

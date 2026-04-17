@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Coroutine
@@ -11,9 +10,10 @@ import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed
 
+from app.core.logging import get_logger
 from app.schemas.market import OHLCV
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 BASE_REST_URL = "https://api.binance.com"
 WS_BASE_URL = "wss://stream.binance.com:9443"

@@ -170,6 +170,9 @@ export interface IndicatorData {
   fibonacci: FibonacciData;
   support_resistance: SupportResistanceLevel[];
   money_flow_markers: MoneyFlowMarker[];
+  vwap: IndicatorPoint[];
+  vwap_upper_1: IndicatorPoint[];
+  vwap_lower_1: IndicatorPoint[];
 }
 
 export async function fetchIndicators(
@@ -646,6 +649,74 @@ export async function sendProAnalysis(
 ): Promise<ProAnalysisData> {
   const { data } = await api.post<ProAnalysisData>("/pro-analysis", {
     message, asset, timeframe, image_base64: imageBase64, history,
+  });
+  return data;
+}
+
+// --- Correlations ---
+
+export interface CorrelationData {
+  symbols: string[];
+  matrix: number[][];
+  timeframe: string;
+  lookback_days: number;
+}
+
+export async function fetchCorrelations(
+  symbols?: string,
+  timeframe?: string,
+  lookback_days?: number,
+): Promise<CorrelationData> {
+  const params: Record<string, string | number> = {};
+  if (symbols) params["symbols"] = symbols;
+  if (timeframe) params["timeframe"] = timeframe;
+  if (lookback_days) params["lookback_days"] = lookback_days;
+  const { data } = await api.get<CorrelationData>("/market/correlations", { params });
+  return data;
+}
+
+// --- Funding Rates ---
+
+export interface FundingRateData {
+  symbol: string;
+  funding_rate: number;
+  next_funding_time: string;
+  mark_price: number;
+  index_price: number;
+}
+
+export async function fetchFundingRates(
+  symbols?: string,
+): Promise<FundingRateData[]> {
+  const params: Record<string, string> = {};
+  if (symbols) params["symbols"] = symbols;
+  const { data } = await api.get<FundingRateData[]>("/market/funding-rates", { params });
+  return data;
+}
+
+// --- Order Book ---
+
+export interface OrderBookLevel {
+  price: string;
+  qty: string;
+}
+
+export interface OrderBookData {
+  bids: [string, string][];
+  asks: [string, string][];
+  spread: number;
+  best_bid: number;
+  best_ask: number;
+  timestamp: number;
+  symbol: string;
+}
+
+export async function fetchOrderBook(
+  symbol: string,
+  limit: number = 100,
+): Promise<OrderBookData> {
+  const { data } = await api.get<OrderBookData>("/market/orderbook", {
+    params: { symbol, limit },
   });
   return data;
 }
