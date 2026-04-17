@@ -379,6 +379,23 @@ async def get_indicators(
             "intensity": intensity,
         })
 
+    # Ichimoku Cloud
+    ichimoku_tenkan = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ichimoku_tenkan"]) if not pd.isna(v)]
+    ichimoku_kijun = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ichimoku_kijun"]) if not pd.isna(v)]
+    ichimoku_senkou_a = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ichimoku_senkou_a"]) if not pd.isna(v)]
+    ichimoku_senkou_b = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ichimoku_senkou_b"]) if not pd.isna(v)]
+    ichimoku_chikou = [{"time": t, "value": round(v, 2)} for t, v in zip(times, featured["ichimoku_chikou"]) if not pd.isna(v)]
+
+    # Fibonacci levels
+    from app.data.processors.feature_engineer import compute_fibonacci_levels, compute_support_resistance, compute_money_flow_markers
+    fibonacci = compute_fibonacci_levels(featured, lookback=100)
+
+    # Support / Resistance levels
+    support_resistance = compute_support_resistance(featured, lookback=200)
+
+    # Money Flow markers
+    money_flow_markers = compute_money_flow_markers(featured)
+
     # RSI Scalping indicators (Stochastic + DMI Stochastic)
     from app.ai.strategies.rsi_scalping import compute_rsi_scalping_indicators
     scalp_df = compute_rsi_scalping_indicators(featured)
@@ -421,7 +438,105 @@ async def get_indicators(
         "volume_profile": volume_profile,
         "poc": poc,
         "current_price": last_close,
+        "ichimoku_tenkan": ichimoku_tenkan,
+        "ichimoku_kijun": ichimoku_kijun,
+        "ichimoku_senkou_a": ichimoku_senkou_a,
+        "ichimoku_senkou_b": ichimoku_senkou_b,
+        "ichimoku_chikou": ichimoku_chikou,
+        "fibonacci": fibonacci,
+        "support_resistance": support_resistance,
+        "money_flow_markers": money_flow_markers,
     }
+
+
+def _aggregate_orderflow_windows(
+    raw_windows: list[dict], target_seconds: int,
+) -> list[dict]:
+    """Aggregate 1m order-flow windows into larger timeframes (5m, 15m, 1h).
+
+    Groups windows by their target-timeframe bucket, merges clusters,
+    and recalculates OHLC and delta.
+    """
+    if not raw_windows:
+        return []
+
+    buckets: dict[int, list[dict]] = {}
+    for w in raw_windows:
+        bucket_start = (w["time"] // target_seconds) * target_seconds
+        buckets.setdefault(bucket_start, []).append(w)
+
+    aggregated: list[dict] = []
+    for bucket_start in sorted(buckets):
+        group = buckets[bucket_start]
+        # Merge clusters across all windows in this bucket
+        merged_clusters: dict[float, dict] = {}
+        for w in group:
+            for c in w.get("clusters", []):
+                price = c["price"]
+                if price not in merged_clusters:
+                    merged_clusters[price] = {
+                        "price": price,
+                        "bid_vol": 0.0,
+                        "ask_vol": 0.0,
+                        "delta": 0.0,
+                        "trades": 0,
+                        "imbalance": None,
+                    }
+                mc = merged_clusters[price]
+                mc["bid_vol"] = round(mc["bid_vol"] + c.get("bid_vol", 0), 6)
+                mc["ask_vol"] = round(mc["ask_vol"] + c.get("ask_vol", 0), 6)
+                mc["delta"] = round(mc["ask_vol"] - mc["bid_vol"], 6)
+                mc["trades"] += c.get("trades", 0)
+
+        # Recalculate imbalances on merged clusters
+        for mc in merged_clusters.values():
+            if mc["bid_vol"] > 0 and mc["ask_vol"] / mc["bid_vol"] >= 3.0:
+                mc["imbalance"] = "BUY"
+            elif mc["ask_vol"] > 0 and mc["bid_vol"] / mc["ask_vol"] >= 3.0:
+                mc["imbalance"] = "SELL"
+
+        sorted_clusters = sorted(merged_clusters.values(), key=lambda c: c["price"])
+
+        # OHLC from sub-windows
+        opens = [w["open"] for w in group if w.get("open")]
+        highs = [w["high"] for w in group if w.get("high")]
+        lows = [w["low"] for w in group if w.get("low")]
+        closes = [w["close"] for w in group if w.get("close")]
+
+        total_vol = round(sum(w.get("total_volume", 0) for w in group), 6)
+        total_delta = round(sum(w.get("delta", 0) for w in group), 6)
+
+        aggregated.append({
+            "time": bucket_start,
+            "open": opens[0] if opens else 0,
+            "high": max(highs) if highs else 0,
+            "low": min(lows) if lows else 0,
+            "close": closes[-1] if closes else 0,
+            "total_volume": total_vol,
+            "delta": total_delta,
+            "clusters": sorted_clusters,
+        })
+
+    return aggregated
+
+
+def _aggregate_delta_history(
+    raw_history: list[dict], target_seconds: int,
+) -> list[dict]:
+    """Aggregate delta history entries into larger timeframe buckets.
+
+    Takes the last entry's cumulative delta value per bucket.
+    """
+    if not raw_history:
+        return []
+
+    buckets: dict[int, dict] = {}
+    for entry in raw_history:
+        bucket_start = (entry["time"] // target_seconds) * target_seconds
+        # Keep the last (most recent) value per bucket
+        buckets[bucket_start] = {"time": bucket_start, "value": entry["value"]}
+
+    return [buckets[k] for k in sorted(buckets)]
 
 
 @router.get("/orderflow")
@@ -446,9 +561,29 @@ async def get_orderflow(
             detail=f"No order flow engine running for {asset}. Available: {list(manager.list_engines().keys())}",
         )
 
-    windows = engine.get_recent_windows(limit=limit)
+    # Map timeframe string to seconds for aggregation
+    tf_seconds = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}.get(timeframe, 60)
+    engine_window = engine.window_seconds  # base window size (typically 60s)
+
+    # Fetch enough 1m windows to fill the requested limit of larger windows
+    multiplier = max(1, tf_seconds // engine_window)
+    raw_limit = limit * multiplier + multiplier  # extra to fill the last bucket
+    raw_windows = engine.get_recent_windows(limit=raw_limit)
+
+    # Aggregate into larger timeframes if needed
+    if multiplier > 1 and raw_windows:
+        windows = _aggregate_orderflow_windows(raw_windows, tf_seconds)[-limit:]
+    else:
+        windows = raw_windows[-limit:]
+
     imbalances = engine.detect_imbalances(threshold=3.0)
-    delta_history = list(engine.session_delta_history)[-limit:]
+
+    # Aggregate delta history to match timeframe
+    raw_delta = list(engine.session_delta_history)
+    if multiplier > 1 and raw_delta:
+        delta_history = _aggregate_delta_history(raw_delta, tf_seconds)[-limit:]
+    else:
+        delta_history = raw_delta[-limit:]
 
     return {
         "windows": windows,

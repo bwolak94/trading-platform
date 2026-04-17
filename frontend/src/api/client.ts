@@ -110,6 +110,37 @@ export interface VolumeProfileBucket {
   pct_of_max: number;
 }
 
+export interface FibonacciLevel {
+  ratio: number;
+  label: string;
+  price: number;
+}
+
+export interface FibonacciData {
+  swing_high: number;
+  swing_low: number;
+  levels: FibonacciLevel[];
+}
+
+export interface SupportResistanceLevel {
+  price: number;
+  touches: number;
+  role: "support" | "resistance";
+  strength: number;
+  distance_pct: number;
+  color: string;
+}
+
+export interface MoneyFlowMarker {
+  index: number;
+  text: "$" | "$$" | "$$$";
+  direction: "up" | "down";
+  intensity: "medium" | "high" | "extreme";
+  volume_ratio: number;
+  body_atr: number;
+  time?: number;
+}
+
 export interface IndicatorData {
   ema_20: IndicatorPoint[];
   ema_50: IndicatorPoint[];
@@ -127,6 +158,18 @@ export interface IndicatorData {
   volume_profile: VolumeProfileBucket[];
   poc: VolumeProfileBucket | null;
   current_price: number;
+  stoch_k: IndicatorPoint[];
+  stoch_d: IndicatorPoint[];
+  dmi_stoch: IndicatorPoint[];
+  scalp_signals: { time: number; type: string; price: number }[];
+  ichimoku_tenkan: IndicatorPoint[];
+  ichimoku_kijun: IndicatorPoint[];
+  ichimoku_senkou_a: IndicatorPoint[];
+  ichimoku_senkou_b: IndicatorPoint[];
+  ichimoku_chikou: IndicatorPoint[];
+  fibonacci: FibonacciData;
+  support_resistance: SupportResistanceLevel[];
+  money_flow_markers: MoneyFlowMarker[];
 }
 
 export async function fetchIndicators(

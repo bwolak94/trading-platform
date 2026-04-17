@@ -18,6 +18,7 @@ from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks, find_fair_value_gaps
 from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
 from app.data.processors.feature_engineer import compute_features
 
@@ -145,6 +146,7 @@ class TradingAgent:
             "smc": SMCStrategy(),
             "volume_breakout": VolumeBreakoutStrategy(),
             "rsi_scalping": RSIScalpingStrategy(),
+            "trend_trader": TrendTraderStrategy(),
         }
         self._classifier = RegimeClassifier()
         self._reward_engine = RewardEngine()

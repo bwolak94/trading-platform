@@ -59,8 +59,13 @@ def _compute_features_impl(df: pd.DataFrame) -> pd.DataFrame:
     _add_volatility_indicators(df)
     _add_volume_indicators(df)
     _add_derived_indicators(df)
+    _add_ichimoku_indicators(df)
 
-    df.dropna(inplace=True)
+    # Drop NaN but preserve Ichimoku columns (they have intentional NaN from shift)
+    ichimoku_cols = ["ichimoku_tenkan", "ichimoku_kijun", "ichimoku_senkou_a", "ichimoku_senkou_b", "ichimoku_chikou"]
+    existing_ichimoku = [c for c in ichimoku_cols if c in df.columns]
+    non_ichimoku = [c for c in df.columns if c not in existing_ichimoku]
+    df.dropna(subset=non_ichimoku, inplace=True)
     logger.info("Computed %d features on %d rows", _feature_count(), len(df))
     return df
 
@@ -196,6 +201,192 @@ def _add_derived_indicators(df: pd.DataFrame) -> None:
     )
 
 
+def _add_ichimoku_indicators(df: pd.DataFrame) -> None:
+    """Ichimoku Cloud — Tenkan(9), Kijun(26), Senkou A/B(shifted 26), Chikou(shifted -26)."""
+    high = df["high"]
+    low = df["low"]
+
+    tenkan_period = 9
+    kijun_period = 26
+    senkou_span = 26
+
+    # Tenkan-sen (Conversion Line)
+    df["ichimoku_tenkan"] = (high.rolling(tenkan_period).max() + low.rolling(tenkan_period).min()) / 2
+    # Kijun-sen (Base Line)
+    df["ichimoku_kijun"] = (high.rolling(kijun_period).max() + low.rolling(kijun_period).min()) / 2
+    # Senkou Span A (shifted forward 26 periods)
+    df["ichimoku_senkou_a"] = ((df["ichimoku_tenkan"] + df["ichimoku_kijun"]) / 2).shift(senkou_span)
+    # Senkou Span B (shifted forward 26 periods)
+    df["ichimoku_senkou_b"] = ((high.rolling(senkou_span * 2).max() + low.rolling(senkou_span * 2).min()) / 2).shift(senkou_span)
+    # Chikou Span (close shifted back 26 periods)
+    df["ichimoku_chikou"] = df["close"].shift(-senkou_span)
+
+
+def compute_fibonacci_levels(df: pd.DataFrame, lookback: int = 100) -> dict:
+    """Compute Fibonacci retracement levels from auto swing H/L detection.
+
+    Returns dict with level percentages as keys and prices as values,
+    plus swing_high and swing_low metadata.
+    """
+    lookback = min(lookback, len(df))
+    recent = df.tail(lookback)
+    swing_high = float(recent["high"].max())
+    swing_low = float(recent["low"].min())
+    diff = swing_high - swing_low
+
+    if diff <= 0:
+        return {"swing_high": swing_high, "swing_low": swing_low, "levels": []}
+
+    fib_ratios = [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 0.886, 1.0]
+    levels = []
+    for ratio in fib_ratios:
+        price = swing_low + diff * ratio
+        levels.append({
+            "ratio": ratio,
+            "label": f"{ratio * 100:.1f}%",
+            "price": round(price, 8),
+        })
+
+    return {
+        "swing_high": swing_high,
+        "swing_low": swing_low,
+        "levels": levels,
+    }
+
+
+def compute_support_resistance(df: pd.DataFrame, lookback: int = 200) -> list[dict]:
+    """Compute support/resistance levels via pivot clustering.
+
+    Returns list of dicts with price, touches, role ('support'/'resistance'), strength.
+    """
+    lookback = min(lookback, len(df))
+    recent = df.tail(lookback)
+
+    if len(recent) < 5:
+        return []
+
+    # Find local pivots (swing highs and lows)
+    pivots: list[dict] = []
+    for i in range(2, len(recent) - 2):
+        h = float(recent.iloc[i]["high"])
+        l = float(recent.iloc[i]["low"])
+        if (h >= float(recent.iloc[i-1]["high"]) and h >= float(recent.iloc[i-2]["high"])
+                and h >= float(recent.iloc[i+1]["high"]) and h >= float(recent.iloc[i+2]["high"])):
+            pivots.append({"price": h, "type": "resistance"})
+        if (l <= float(recent.iloc[i-1]["low"]) and l <= float(recent.iloc[i-2]["low"])
+                and l <= float(recent.iloc[i+1]["low"]) and l <= float(recent.iloc[i+2]["low"])):
+            pivots.append({"price": l, "type": "support"})
+
+    if not pivots:
+        return []
+
+    # Cluster nearby pivots using ATR
+    atr = float(df.iloc[-1].get("atr_14", 1))
+    cluster_threshold = atr * 0.5
+    sorted_pivots = sorted(pivots, key=lambda p: p["price"])
+    clusters: list[dict] = []
+    current_cluster = [sorted_pivots[0]]
+
+    for p in sorted_pivots[1:]:
+        if abs(p["price"] - current_cluster[-1]["price"]) < cluster_threshold:
+            current_cluster.append(p)
+        else:
+            _add_cluster(clusters, current_cluster)
+            current_cluster = [p]
+
+    _add_cluster(clusters, current_cluster)
+
+    # Filter by minimum touches and score by proximity to current price
+    last_close = float(df.iloc[-1]["close"])
+    result = []
+    for c in clusters:
+        if c["touches"] < 2:
+            continue
+        distance_pct = abs(c["price"] - last_close) / last_close * 100
+        c["distance_pct"] = round(distance_pct, 2)
+        c["color"] = "#ef4444" if c["role"] == "resistance" else "#3b82f6"
+        result.append(c)
+
+    return sorted(result, key=lambda x: x["price"])
+
+
+def _add_cluster(clusters: list[dict], pivot_group: list[dict]) -> None:
+    """Add a cluster from a group of nearby pivots."""
+    avg_price = sum(p["price"] for p in pivot_group) / len(pivot_group)
+    resistance_count = sum(1 for p in pivot_group if p["type"] == "resistance")
+    role = "resistance" if resistance_count > len(pivot_group) / 2 else "support"
+    clusters.append({
+        "price": round(avg_price, 8),
+        "touches": len(pivot_group),
+        "role": role,
+        "strength": round(min(len(pivot_group) / 5, 1.0), 2),
+    })
+
+
+def compute_money_flow_markers(df: pd.DataFrame) -> list[dict]:
+    """Compute institutional money flow markers.
+
+    $ marker: volume > 2x avg + body > 1.5 ATR
+    $$$ marker: volume > 4x avg
+    Returns list of dicts with time index, marker text, and direction.
+    """
+    if len(df) < 20:
+        return []
+
+    markers: list[dict] = []
+    vol_avg = df["volume"].rolling(20).mean()
+    atr = df.get("atr_14")
+    if atr is None:
+        return []
+
+    for i in range(20, len(df)):
+        row = df.iloc[i]
+        vol = float(row["volume"])
+        avg = float(vol_avg.iloc[i])
+        current_atr = float(atr.iloc[i])
+
+        if avg <= 0 or current_atr <= 0:
+            continue
+
+        vol_ratio = vol / avg
+        body = abs(float(row["close"]) - float(row["open"]))
+        body_atr_ratio = body / current_atr
+
+        if vol_ratio < 2.0 or body_atr_ratio < 1.5:
+            continue
+
+        direction = "up" if float(row["close"]) > float(row["open"]) else "down"
+
+        if vol_ratio >= 4.0:
+            marker_text = "$$$"
+            intensity = "extreme"
+        elif vol_ratio >= 3.0:
+            marker_text = "$$"
+            intensity = "high"
+        else:
+            marker_text = "$"
+            intensity = "medium"
+
+        marker = {
+            "index": int(df.index[i]),
+            "text": marker_text,
+            "direction": direction,
+            "intensity": intensity,
+            "volume_ratio": round(vol_ratio, 2),
+            "body_atr": round(body_atr_ratio, 2),
+        }
+
+        # Add timestamp if available
+        if "timestamp" in df.columns:
+            ts = row["timestamp"]
+            if hasattr(ts, "timestamp"):
+                marker["time"] = int(ts.timestamp())
+
+        markers.append(marker)
+
+    return markers
+
+
 def _feature_count() -> int:
     """Return total number of features this module produces."""
-    return 22
+    return 27

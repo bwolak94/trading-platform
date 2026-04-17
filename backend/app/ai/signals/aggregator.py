@@ -13,6 +13,7 @@ from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy
 from app.ai.strategies.trend_following import TrendFollowingStrategy
+from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class SignalAggregator:
             SMCStrategy(),
             VolumeBreakoutStrategy(),
             RSIScalpingStrategy(),
+            TrendTraderStrategy(),
         ]
         self._classifier = RegimeClassifier()
         self._recent_signals: list[dict[str, Any]] = []

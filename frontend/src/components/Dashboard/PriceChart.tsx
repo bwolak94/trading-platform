@@ -3,7 +3,6 @@ import {
   type ISeriesApi,
   type CandlestickData,
   type HistogramData,
-  type LineData,
   type Time,
   type MouseEventParams,
   type SeriesMarker,
@@ -18,11 +17,8 @@ import {
   fetchKlines,
   fetchIndicators,
   fetchLiquidationHeatmap,
-  type KlineData,
   type LiquidationHeatmapData,
   type IndicatorData,
-  type OrderBlockData,
-  type FVGData,
 } from "../../api/client";
 
 const CRYPTO_ASSETS = [
@@ -79,9 +75,28 @@ const INDICATOR_GROUPS = [
     ],
   },
   {
+    label: "Heatmap",
+    items: [
+      { id: "vol_heatmap", label: "Volume Heatmap", color: "#ff6b00" },
+    ],
+  },
+  {
+    label: "Ichimoku",
+    items: [
+      { id: "ichimoku", label: "Ichimoku Cloud", color: "#f97316" },
+    ],
+  },
+  {
     label: "Volatility",
     items: [
       { id: "bb", label: "Bollinger Bands", color: "#8b5cf6" },
+    ],
+  },
+  {
+    label: "Fibonacci / S&R",
+    items: [
+      { id: "fibonacci", label: "Fibonacci Levels", color: "#eab308" },
+      { id: "support_resistance", label: "Auto S/R", color: "#06b6d4" },
     ],
   },
   {
@@ -92,8 +107,9 @@ const INDICATOR_GROUPS = [
     ],
   },
   {
-    label: "Scalping",
+    label: "Flow",
     items: [
+      { id: "money_flow", label: "$ Money Flow", color: "#22c55e" },
       { id: "rsi_scalp", label: "RSI Scalp Signals", color: "#22d3ee" },
     ],
   },
@@ -104,9 +120,9 @@ const INDICATOR_GROUPS = [
       { id: "liq_heatmap", label: "Liquidation Heatmap", color: "#facc15" },
     ],
   },
-] as const;
+] as { label: string; items: { id: IndicatorId; label: string; color: string }[] }[];
 
-type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap" | "rsi_scalp";
+type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap" | "rsi_scalp" | "ichimoku" | "fibonacci" | "support_resistance" | "money_flow" | "vol_heatmap";
 
 function fmt(p: number): string {
   if (p >= 1000) return p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -260,6 +276,8 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
     if (!el) return;
     let cancelled = false;
 
+    const hasVolHeatmap = activeIndicators.has("vol_heatmap");
+
     const chart = createChart(el, {
       width: el.clientWidth, height: compact ? 350 : 550,
       layout: { background: { type: ColorType.Solid, color: "#0d1117" }, textColor: "#8b949e", fontFamily: "'Inter', sans-serif" },
@@ -297,6 +315,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
     window.addEventListener("resize", onResize);
 
     let prevClose = 0;
+    let heatmapCleanupRef: (() => void) | null = null;
 
     // Load candle data
     fetchKlines(asset, timeframe, candleLimit).then((klines) => {
@@ -335,11 +354,16 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
         }
       }
 
+      // Volume Heatmap — thermal overlay on chart
+      if (hasVolHeatmap && klines.length > 0) {
+        heatmapCleanupRef = setupVolumeHeatmap(chart, cs, klines, el, compact ? 350 : 550);
+      }
+
       // Load indicators + liquidation heatmap
       const promises: Promise<void>[] = [];
 
       if (activeIndicators.size > 0) {
-        const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap");
+        const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap" && id !== "vol_heatmap");
         if (hasNonLiqHeatmap) {
           promises.push(
             fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
@@ -428,7 +452,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
       indicatorSeries.forEach((s) => { try { chart.removeSeries(s); } catch { /* */ } });
       indicatorSeries.length = 0;
 
-      const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap");
+      const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap" && id !== "vol_heatmap");
       if (hasNonLiqHeatmap) {
         fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
           if (cancelled) return;
@@ -450,6 +474,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
       window.removeEventListener("resize", onResize);
       if (reconTimer) clearTimeout(reconTimer);
       ws?.close();
+      heatmapCleanupRef?.();
       chart.remove();
     };
   }, []);
@@ -589,9 +614,8 @@ function drawIndicators(
     }
   }
   // RSI Scalping BUY/SELL signals — only last 3 clean signals
-  const scalpSignals = (data as Record<string, unknown>)["scalp_signals"] as { time: number; type: string; price: number }[] | undefined;
-  if (active.has("rsi_scalp") && scalpSignals?.length) {
-    for (const sig of scalpSignals.slice(-3)) {
+  if (active.has("rsi_scalp") && data.scalp_signals?.length) {
+    for (const sig of data.scalp_signals.slice(-3)) {
       const isBuy = sig.type === "BUY";
       plRefs.push(candleSeries.createPriceLine({
         price: sig.price,
@@ -601,6 +625,94 @@ function drawIndicators(
         axisLabelVisible: true,
         title: `${sig.type} (RSI Scalp)`,
       }));
+    }
+  }
+
+  // Ichimoku Cloud
+  if (active.has("ichimoku")) {
+    // Tenkan-sen (orange)
+    if (data.ichimoku_tenkan?.length) {
+      const s = chart.addLineSeries({ color: "#f97316", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_tenkan.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Kijun-sen (blue)
+    if (data.ichimoku_kijun?.length) {
+      const s = chart.addLineSeries({ color: "#3b82f6", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_kijun.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Senkou Span A (green dashed)
+    if (data.ichimoku_senkou_a?.length) {
+      const s = chart.addLineSeries({ color: "#22c55e80", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_senkou_a.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Senkou Span B (red dashed)
+    if (data.ichimoku_senkou_b?.length) {
+      const s = chart.addLineSeries({ color: "#ef444480", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_senkou_b.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Chikou Span (purple dotted)
+    if (data.ichimoku_chikou?.length) {
+      const s = chart.addLineSeries({ color: "#a855f780", lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_chikou.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+  }
+
+  // Fibonacci Levels — horizontal lines with color gradient (gold to red)
+  if (active.has("fibonacci") && data.fibonacci?.levels?.length) {
+    const fibColors: Record<string, string> = {
+      "0.0%": "#6b7280", "23.6%": "#eab308", "38.2%": "#f59e0b",
+      "50.0%": "#f97316", "61.8%": "#ef4444", "78.6%": "#dc2626",
+      "88.6%": "#b91c1c", "100.0%": "#6b7280",
+    };
+    for (const level of data.fibonacci.levels) {
+      const color = fibColors[level.label] ?? "#eab308";
+      plRefs.push(candleSeries.createPriceLine({
+        price: level.price,
+        color: color + "90",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `Fib ${level.label}`,
+      }));
+    }
+  }
+
+  // Auto Support / Resistance — colored by role, style by strength
+  if (active.has("support_resistance") && data.support_resistance?.length) {
+    const srLevels = data.support_resistance.slice(-12);
+    for (const sr of srLevels) {
+      const isResistance = sr.role === "resistance";
+      const color = isResistance ? "#ef4444" : "#3b82f6";
+      const lineWidth = sr.strength > 0.6 ? 2 : 1;
+      plRefs.push(candleSeries.createPriceLine({
+        price: sr.price,
+        color: color + (sr.strength > 0.6 ? "cc" : "80"),
+        lineWidth,
+        lineStyle: sr.strength > 0.4 ? LineStyle.Solid : LineStyle.Dashed,
+        axisLabelVisible: sr.strength > 0.3,
+        title: `${isResistance ? "R" : "S"} (${sr.touches}x)`,
+      }));
+    }
+  }
+
+  // $ Money Flow Markers — series markers on candles
+  if (active.has("money_flow") && data.money_flow_markers?.length) {
+    const markers: SeriesMarker<Time>[] = data.money_flow_markers
+      .filter((m) => m.time != null)
+      .map((m) => ({
+        time: m.time as Time,
+        position: m.direction === "up" ? "aboveBar" as const : "belowBar" as const,
+        color: m.direction === "up" ? "#22c55e" : "#ef4444",
+        shape: "circle" as const,
+        text: m.text,
+      }));
+    if (markers.length > 0) {
+      candleSeries.setMarkers(markers);
     }
   }
 }
@@ -666,4 +778,214 @@ function drawLiquidationHeatmap(
       }));
     }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Volume Heatmap — thermal color overlay behind candles              */
+/* ------------------------------------------------------------------ */
+
+interface HeatCell {
+  time: number;
+  priceLow: number;
+  priceHigh: number;
+  intensity: number;
+}
+
+function thermalColor(intensity: number): string {
+  // Thermal scale matching TradingMaster: dark red → red → orange → yellow → green → cyan
+  const a = Math.min(0.92, Math.max(0.25, intensity * 0.95 + 0.1));
+  if (intensity < 0.08) return `rgba(30, 5, 5, ${a})`;
+  if (intensity < 0.16) return `rgba(80, 12, 8, ${a})`;
+  if (intensity < 0.24) return `rgba(130, 22, 5, ${a})`;
+  if (intensity < 0.32) return `rgba(170, 40, 0, ${a})`;
+  if (intensity < 0.40) return `rgba(200, 70, 0, ${a})`;
+  if (intensity < 0.48) return `rgba(220, 110, 0, ${a})`;
+  if (intensity < 0.56) return `rgba(235, 160, 0, ${a})`;
+  if (intensity < 0.64) return `rgba(240, 210, 0, ${a})`;
+  if (intensity < 0.72) return `rgba(200, 235, 0, ${a})`;
+  if (intensity < 0.80) return `rgba(120, 230, 40, ${a})`;
+  if (intensity < 0.88) return `rgba(0, 220, 100, ${a})`;
+  if (intensity < 0.95) return `rgba(0, 220, 180, ${a})`;
+  return `rgba(0, 235, 235, ${a})`;
+}
+
+function computeHeatmapCells(
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  numBins: number = 60,
+): HeatCell[] {
+  if (klines.length < 2) return [];
+
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const k of klines) {
+    if (k.low < priceMin) priceMin = k.low;
+    if (k.high > priceMax) priceMax = k.high;
+  }
+  const range = priceMax - priceMin;
+  if (range <= 0) return [];
+
+  const binSize = range / numBins;
+  const lookback = Math.min(30, Math.floor(klines.length / 3));
+
+  // Rolling volume profile: for each candle, accumulate volume from lookback window
+  // This creates a dense, continuous heatmap like TradingMaster
+  const profileBins = new Float64Array(numBins); // reusable accumulator
+  const cells: HeatCell[] = [];
+  let globalMax = 0;
+
+  for (let i = 0; i < klines.length; i++) {
+    // Reset accumulator
+    profileBins.fill(0);
+
+    // Accumulate volume from lookback window
+    const windowStart = Math.max(0, i - lookback);
+    for (let j = windowStart; j <= i; j++) {
+      const k = klines[j]!;
+      const startBin = Math.max(0, Math.floor((k.low - priceMin) / binSize));
+      const endBin = Math.min(numBins - 1, Math.floor((k.high - priceMin) / binSize));
+      const numTouched = endBin - startBin + 1;
+      if (numTouched <= 0) continue;
+
+      const bodyLow = Math.min(k.open, k.close);
+      const bodyHigh = Math.max(k.open, k.close);
+
+      // Decay: more recent candles contribute more
+      const age = i - j;
+      const decay = 1.0 - age / (lookback + 1) * 0.6;
+
+      for (let b = startBin; b <= endBin; b++) {
+        const bMid = priceMin + (b + 0.5) * binSize;
+        const inBody = bMid >= bodyLow && bMid <= bodyHigh;
+        const weight = inBody ? 2.0 : 0.5;
+        profileBins[b]! += (k.volume / numTouched) * weight * decay;
+      }
+    }
+
+    // Find local max for this column
+    let colMax = 0;
+    for (let b = 0; b < numBins; b++) {
+      if (profileBins[b]! > colMax) colMax = profileBins[b]!;
+    }
+    if (colMax > globalMax) globalMax = colMax;
+
+    // Store all non-zero bins for this time column
+    const time = klines[i]!.time;
+    for (let b = 0; b < numBins; b++) {
+      if (profileBins[b]! > 0) {
+        cells.push({
+          time,
+          priceLow: priceMin + b * binSize,
+          priceHigh: priceMin + (b + 1) * binSize,
+          intensity: profileBins[b]!, // normalize later
+        });
+      }
+    }
+  }
+
+  // Normalize all cells by global max
+  if (globalMax > 0) {
+    for (const cell of cells) {
+      cell.intensity = cell.intensity / globalMax;
+    }
+  }
+
+  return cells;
+}
+
+function setupVolumeHeatmap(
+  chart: IChartApi,
+  candleSeries: ISeriesApi<"Candlestick">,
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  container: HTMLDivElement,
+  chartHeight: number,
+): () => void {
+  const cells = computeHeatmapCells(klines, 50);
+  if (cells.length === 0) return () => {};
+
+  // Overlay canvas on top of the chart inside the container div
+  const overlay = document.createElement("canvas");
+  overlay.style.position = "absolute";
+  overlay.style.top = "0";
+  overlay.style.left = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "10";
+  container.style.position = "relative";
+  container.appendChild(overlay);
+
+  const sortedTimes = Array.from(new Set(cells.map((c) => c.time))).sort((a, b) => a - b);
+
+  let rafId = 0;
+
+  function render() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = container.clientWidth;
+    const h = chartHeight;
+
+    overlay.width = Math.round(w * dpr);
+    overlay.height = Math.round(h * dpr);
+    overlay.style.width = w + "px";
+    overlay.style.height = h + "px";
+
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    // Bar width from two adjacent visible times — extend slightly for overlap
+    let barW = 10;
+    for (let i = 0; i < sortedTimes.length - 1; i++) {
+      const x0 = chart.timeScale().timeToCoordinate(sortedTimes[i]! as Time);
+      const x1 = chart.timeScale().timeToCoordinate(sortedTimes[i + 1]! as Time);
+      if (x0 !== null && x1 !== null) {
+        barW = Math.max(4, Math.abs(x1 - x0) * 1.1); // 10% wider for seamless fill
+        break;
+      }
+    }
+
+    // Draw cells in CSS pixels, let canvas scaling handle DPI
+    ctx.scale(dpr, dpr);
+
+    for (const cell of cells) {
+      const x = chart.timeScale().timeToCoordinate(cell.time as Time);
+      if (x === null) continue;
+
+      const y1 = candleSeries.priceToCoordinate(cell.priceHigh);
+      const y2 = candleSeries.priceToCoordinate(cell.priceLow);
+      if (y1 === null || y2 === null) continue;
+
+      const top = Math.min(y1, y2);
+      const cellH = Math.abs(y2 - y1);
+      if (cellH < 0.5) continue;
+
+      ctx.fillStyle = thermalColor(cell.intensity);
+      ctx.fillRect(x - barW / 2, top, barW, Math.max(cellH, 1));
+    }
+  }
+
+  function scheduleRender() {
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(render);
+  }
+
+  // Staggered initial renders
+  setTimeout(scheduleRender, 100);
+  setTimeout(scheduleRender, 400);
+  setTimeout(scheduleRender, 1000);
+
+  // Re-render on pan/zoom
+  chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleRender);
+
+  // Re-render on resize
+  const resizeObs = new ResizeObserver(scheduleRender);
+  resizeObs.observe(container);
+
+  // Periodic sync for price auto-scale
+  const syncTimer = setInterval(scheduleRender, 300);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    clearInterval(syncTimer);
+    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleRender); } catch { /* */ }
+    resizeObs.disconnect();
+    overlay.remove();
+  };
 }

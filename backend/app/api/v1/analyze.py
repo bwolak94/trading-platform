@@ -12,6 +12,7 @@ from app.ai.strategies.base import MarketContext, SignalResult
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy
 from app.ai.strategies.trend_following import TrendFollowingStrategy
+from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
 from app.core.symbols import ALL_SYMBOLS, VALID_TIMEFRAMES
 from app.data.processors.feature_engineer import compute_features
@@ -30,6 +31,7 @@ STRATEGIES = {
     "smc": SMCStrategy(),
     "volume_breakout": VolumeBreakoutStrategy(),
     "rsi_scalping": RSIScalpingStrategy(),
+    "trend_trader": TrendTraderStrategy(),
 }
 
 STRATEGY_DESCRIPTIONS = {
@@ -38,6 +40,7 @@ STRATEGY_DESCRIPTIONS = {
     "smc": "Smart Money Concepts — finds Order Blocks and Fair Value Gaps for institutional-level entries. Best in trends.",
     "volume_breakout": "Detects range breakouts confirmed by volume spikes. Works in all market conditions.",
     "rsi_scalping": "RSI + Stochastic + DMI Stochastic crossover scalping. BUY when DMI Stoch crosses above 10, SELL when crosses below 90. Works in all regimes.",
+    "trend_trader": "Ichimoku Cloud + Fibonacci + S/R confluence strategy. Uses TK cross above/below cloud with Fib level and S/R support. Works in all regimes.",
 }
 
 SYMBOL_MAP = {
