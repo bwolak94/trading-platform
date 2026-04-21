@@ -16,7 +16,13 @@ from app.schemas.market import OHLCV
 logger = get_logger(__name__)
 
 BASE_REST_URL = "https://api.binance.com"
+FUTURES_REST_URL = "https://fapi.binance.com"
 WS_BASE_URL = "wss://stream.binance.com:9443"
+
+# Cache for all futures symbols — refreshed every hour
+_futures_symbols_cache: list[str] = []
+_futures_symbols_fetched_at: float = 0.0
+FUTURES_SYMBOLS_CACHE_TTL = 3600  # 1 hour
 
 # Binance uses lowercase symbols without slash
 SYMBOL_MAP = {
@@ -108,6 +114,64 @@ def _parse_kline(symbol: str, timeframe: str, kline: list[Any]) -> OHLCV:
         close=Decimal(str(kline[4])),
         volume=Decimal(str(kline[5])),
     )
+
+
+async def get_all_futures_symbols(min_volume_usd: float = 10_000_000.0) -> list[str]:
+    """Fetch all active USDT perpetual futures symbols from Binance.
+
+    Results are cached for FUTURES_SYMBOLS_CACHE_TTL seconds to avoid excessive API calls.
+
+    Args:
+        min_volume_usd: Minimum 24h volume in USD to include a symbol (default $10M).
+
+    Returns:
+        List of symbols in 'BASE/USDT' format, sorted by 24h volume descending.
+    """
+    import time
+
+    global _futures_symbols_cache, _futures_symbols_fetched_at
+
+    if _futures_symbols_cache and time.time() - _futures_symbols_fetched_at < FUTURES_SYMBOLS_CACHE_TTL:
+        return _futures_symbols_cache
+
+    if not _check_circuit_breaker():
+        logger.warning("Circuit breaker open — returning cached futures symbols")
+        return _futures_symbols_cache or []
+
+    client = _get_client()
+    try:
+        resp = await client.get(f"{FUTURES_REST_URL}/fapi/v1/ticker/24hr")
+        resp.raise_for_status()
+        tickers = resp.json()
+        _record_success()
+    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+        _record_failure()
+        logger.error("Failed to fetch futures symbols: %s", exc)
+        return _futures_symbols_cache or []
+
+    symbols = []
+    for ticker in tickers:
+        sym = ticker.get("symbol", "")
+        # Only USDT perpetuals (no quarterly contracts like BTCUSDT_241227)
+        if not sym.endswith("USDT") or "_" in sym:
+            continue
+        try:
+            volume_usd = float(ticker.get("quoteVolume", 0))
+        except (ValueError, TypeError):
+            continue
+        if volume_usd >= min_volume_usd:
+            base = sym[:-4]  # Strip 'USDT'
+            symbols.append((f"{base}/USDT", volume_usd))
+
+    # Sort by volume descending, take top 200
+    symbols.sort(key=lambda x: x[1], reverse=True)
+    result = [s[0] for s in symbols[:200]]
+
+    _futures_symbols_cache = result
+    _futures_symbols_fetched_at = time.time()
+
+    logger.info("Loaded %d USDT perpetual futures symbols from Binance", len(result))
+    return result
 
 
 class BinanceFetcher:
@@ -275,3 +339,114 @@ class BinanceFetcher:
         """Signal the WebSocket stream to stop."""
         self._ws_running = False
         logger.info("WebSocket stream stop requested")
+
+
+async def get_long_short_ratio(symbol: str, period: str = "1h", limit: int = 10) -> list[dict]:
+    """Fetch global long/short account ratio for a futures symbol.
+
+    Args:
+        symbol: e.g. "BTCUSDT"
+        period: "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"
+        limit: Number of data points (max 500)
+
+    Returns:
+        List of {timestamp, longShortRatio, longAccount, shortAccount} dicts
+    """
+    if not _check_circuit_breaker():
+        return []
+    client = _get_client()
+    try:
+        resp = await client.get(
+            f"{FUTURES_REST_URL}/futures/data/globalLongShortAccountRatio",
+            params={"symbol": symbol, "period": period, "limit": limit},
+        )
+        resp.raise_for_status()
+        _record_success()
+        data = resp.json()
+        return [
+            {
+                "timestamp": int(item["timestamp"]),
+                "long_short_ratio": float(item["longShortRatio"]),
+                "long_account": float(item["longAccount"]),
+                "short_account": float(item["shortAccount"]),
+            }
+            for item in data
+        ]
+    except Exception as exc:
+        _record_failure()
+        logger.warning("Long/short ratio fetch failed for %s: %s", symbol, exc)
+        return []
+
+
+async def get_taker_buysell_ratio(symbol: str, period: str = "1h", limit: int = 10) -> list[dict]:
+    """Fetch taker buy/sell volume ratio for a futures symbol.
+
+    Ratio > 1 means buyers are more aggressive.
+
+    Args:
+        symbol: e.g. "BTCUSDT"
+        period: "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"
+        limit: Number of data points (max 500)
+
+    Returns:
+        List of {timestamp, buy_sell_ratio, buy_vol, sell_vol} dicts
+    """
+    if not _check_circuit_breaker():
+        return []
+    client = _get_client()
+    try:
+        resp = await client.get(
+            f"{FUTURES_REST_URL}/futures/data/takerlongshortRatio",
+            params={"symbol": symbol, "period": period, "limit": limit},
+        )
+        resp.raise_for_status()
+        _record_success()
+        data = resp.json()
+        return [
+            {
+                "timestamp": int(item["timestamp"]),
+                "buy_sell_ratio": float(item["buySellRatio"]),
+                "buy_vol": float(item["buyVol"]),
+                "sell_vol": float(item["sellVol"]),
+            }
+            for item in data
+        ]
+    except Exception as exc:
+        _record_failure()
+        logger.warning("Taker buy/sell ratio fetch failed for %s: %s", symbol, exc)
+        return []
+
+
+async def get_open_interest_history(symbol: str, period: str = "1h", limit: int = 50) -> list[dict]:
+    """Fetch open interest history for a futures symbol.
+
+    Args:
+        symbol: e.g. "BTCUSDT"
+        period: "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"
+        limit: Number of data points (max 500)
+
+    Returns:
+        List of {timestamp, open_interest, open_interest_value} dicts
+    """
+    if not _check_circuit_breaker():
+        return []
+    client = _get_client()
+    try:
+        resp = await client.get(
+            f"{FUTURES_REST_URL}/futures/data/openInterestHist",
+            params={"symbol": symbol, "period": period, "limit": limit},
+        )
+        resp.raise_for_status()
+        _record_success()
+        return [
+            {
+                "timestamp": int(item["timestamp"]),
+                "open_interest": float(item["sumOpenInterest"]),
+                "open_interest_value": float(item["sumOpenInterestValue"]),
+            }
+            for item in resp.json()
+        ]
+    except Exception as exc:
+        _record_failure()
+        logger.warning("Open interest fetch failed for %s: %s", symbol, exc)
+        return []

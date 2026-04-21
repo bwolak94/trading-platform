@@ -107,6 +107,23 @@ FOREX_SYMBOLS = {"EURUSD", "GBPUSD", "XAUUSD", "GBPJPY", "EUR/USD", "GBP/USD", "
 FOREX_MAP = {"EURUSD": "EUR/USD", "GBPUSD": "GBP/USD", "XAUUSD": "XAU/USD", "GBPJPY": "GBP/JPY"}
 
 
+@router.get("/symbols")
+async def get_all_symbols() -> dict:
+    """Return all active Binance USDT perpetual futures symbols plus forex pairs.
+
+    Uses the cached dynamic symbol list (refreshed hourly from Binance).
+    """
+    from app.core.symbols import get_active_crypto_symbols
+    from app.core.symbols import FOREX_SYMBOLS
+
+    crypto = get_active_crypto_symbols()
+    return {
+        "crypto": [{"label": s, "value": s.replace("/", "")} for s in crypto],
+        "forex": [{"label": s, "value": s.replace("/", "")} for s in FOREX_SYMBOLS],
+        "total": len(crypto) + len(FOREX_SYMBOLS),
+    }
+
+
 @router.get("/klines")
 async def get_klines(
     asset: str = Query(default="BTCUSDT", description="Trading pair symbol"),
@@ -820,6 +837,13 @@ async def get_correlations(
     )
 
 
+@router.get("/fear-greed")
+async def get_fear_greed() -> dict:
+    """Get Fear & Greed Index (cached 1h from alternative.me)."""
+    from app.data.fetchers.fear_greed_fetcher import get_fear_greed_index
+    return await get_fear_greed_index()
+
+
 @router.get("/calendar")
 async def get_macro_calendar(
     hours_ahead: int = Query(default=24, ge=1, le=168, description="Hours ahead to look for events"),
@@ -861,3 +885,591 @@ async def get_macro_calendar(
         "hours_ahead": result.hours_ahead,
         "total": len(events),
     }
+
+
+@router.get("/btc-dominance")
+async def get_btc_dominance_endpoint() -> dict:
+    """Get BTC market dominance and global crypto stats (cached 5min from CoinGecko)."""
+    from app.data.fetchers.coingecko_fetcher import get_btc_dominance
+    return await get_btc_dominance()
+
+
+@router.get("/breadth")
+async def get_market_breadth_endpoint() -> dict:
+    """Get % of Binance futures pairs above 20/50/200 EMA (cached 5min)."""
+    from app.ai.signals.market_breadth import get_market_breadth
+    return await get_market_breadth()
+
+
+@router.get("/momentum-rank")
+async def get_momentum_rank(top_n: int = Query(default=20, ge=5, le=50)) -> dict:
+    """Get symbols ranked by multi-timeframe momentum score (cached 15min).
+
+    Scores each symbol across 1h (30%), 4h (40%), and 1d (30%) timeframes
+    using EMA20 position, ROC-5, ROC-20, and RSI. Returns top_n results
+    sorted by absolute score strength.
+    """
+    from app.ai.signals.momentum_scorer import get_momentum_rankings
+
+    rankings = await get_momentum_rankings(top_n=top_n)
+    return {"rankings": rankings, "count": len(rankings)}
+
+
+@router.get("/long-short-ratio/{symbol}")
+async def get_long_short_ratio_endpoint(
+    symbol: str,
+    period: str = Query(default="1h", description="Timeframe: 5m, 15m, 30m, 1h, 4h, 1d"),
+    limit: int = Query(default=10, ge=1, le=100),
+) -> dict:
+    """Get global long/short account ratio for a futures symbol from Binance."""
+    from app.data.fetchers.binance_fetcher import get_long_short_ratio
+    data = await get_long_short_ratio(symbol.upper(), period=period, limit=limit)
+    # Flag extreme positioning
+    extreme_long = False
+    extreme_short = False
+    if data:
+        latest = data[-1]
+        long_pct = latest["long_account"] * 100
+        extreme_long = long_pct > 75
+        extreme_short = long_pct < 25
+    return {
+        "symbol": symbol.upper(),
+        "data": data,
+        "extreme_long": extreme_long,
+        "extreme_short": extreme_short,
+    }
+
+
+@router.get("/taker-ratio/{symbol}")
+async def get_taker_ratio_endpoint(
+    symbol: str,
+    period: str = Query(default="1h", description="Timeframe: 5m, 15m, 30m, 1h, 4h, 1d"),
+    limit: int = Query(default=10, ge=1, le=100),
+) -> dict:
+    """Get taker buy/sell volume ratio for a futures symbol from Binance."""
+    from app.data.fetchers.binance_fetcher import get_taker_buysell_ratio
+    data = await get_taker_buysell_ratio(symbol.upper(), period=period, limit=limit)
+    # Current ratio
+    current_ratio = data[-1]["buy_sell_ratio"] if data else 1.0
+    return {
+        "symbol": symbol.upper(),
+        "data": data,
+        "current_ratio": round(current_ratio, 3),
+        "buyers_dominant": current_ratio > 1.1,
+        "sellers_dominant": current_ratio < 0.9,
+    }
+
+
+@router.get("/regime-changes")
+async def get_regime_changes(limit: int = Query(default=10, ge=1, le=50)) -> dict:
+    """Get recent regime change events detected by the alerter."""
+    from app.ai.regime.regime_change_alerter import get_regime_change_alerter
+    alerter = get_regime_change_alerter()
+    return {
+        "changes": alerter.get_recent_changes(limit=limit),
+        "current_regimes": alerter.get_current_regimes(),
+    }
+
+
+@router.get("/cvd")
+async def get_cvd(
+    asset: str = Query(..., description="Asset symbol e.g. BTCUSDT"),
+    interval: str = Query(default="1h"),
+    limit: int = Query(default=100, ge=20, le=500),
+) -> dict:
+    """Get Cumulative Volume Delta for an asset (approximated from OHLCV)."""
+    from app.ai.signals.cvd_calculator import calculate_cvd_from_ohlcv, detect_cvd_divergence
+
+    binance_url = "https://api.binance.com/api/v3/klines"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(binance_url, params={"symbol": asset.upper(), "interval": interval, "limit": limit})
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=f"Binance API error: {exc.response.text}",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to reach Binance API: {exc}") from exc
+
+    raw_klines: list[list] = resp.json()
+    if not raw_klines:
+        raise HTTPException(status_code=404, detail=f"No data found for {asset}")
+
+    candles = [
+        {
+            "time": int(k[0]) // 1000,
+            "open": float(k[1]),
+            "high": float(k[2]),
+            "low": float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        }
+        for k in raw_klines
+    ]
+
+    cvd_series = calculate_cvd_from_ohlcv(candles)
+    divergences = detect_cvd_divergence(candles, cvd_series)
+
+    return {
+        "asset": asset.upper(),
+        "interval": interval,
+        "cvd": cvd_series,
+        "divergences": divergences,
+        "current_cvd": cvd_series[-1]["cvd"] if cvd_series else 0,
+    }
+
+
+@router.get("/open-interest/{symbol}")
+async def get_open_interest_endpoint(
+    symbol: str,
+    period: str = Query(default="1h"),
+    limit: int = Query(default=50, ge=10, le=200),
+) -> dict:
+    """Get open interest history for a futures symbol."""
+    from app.data.fetchers.binance_fetcher import get_open_interest_history
+    data = await get_open_interest_history(symbol.upper(), period=period, limit=limit)
+    return {"symbol": symbol.upper(), "data": data, "count": len(data)}
+
+
+@router.get("/sector-momentum")
+async def get_sector_momentum_endpoint() -> dict:
+    """Get momentum scores for each crypto sector (cached 10 min).
+
+    Returns sectors ranked by weighted 1d/7d momentum score, including
+    average changes and top 3 performing symbols per sector.
+    """
+    from app.ai.signals.sector_rotation import get_sector_momentum
+
+    sectors = await get_sector_momentum()
+    return {
+        "sectors": [
+            {
+                "sector": s.sector,
+                "momentum_score": s.momentum_score,
+                "avg_1d_change": s.avg_1d_change,
+                "avg_7d_change": s.avg_7d_change,
+                "top_performers": s.top_performers,
+                "symbol_count": s.symbol_count,
+            }
+            for s in sectors
+        ]
+    }
+
+
+@router.get("/macro")
+async def get_macro() -> dict:
+    """Get macro overlay data: DXY, US10Y, SPX, BTC/DXY correlation (cached 1h).
+
+    Data is fetched from Yahoo Finance via yfinance. Returns None for any
+    indicator that is unavailable or could not be fetched.
+    """
+    from app.data.fetchers.macro_fetcher import get_macro_data
+
+    data = await get_macro_data()
+    return {
+        "dxy_price": data.dxy_price,
+        "dxy_change_pct": data.dxy_change_pct,
+        "us10y_yield": data.us10y_yield,
+        "us10y_change_pct": data.us10y_change_pct,
+        "spx_price": data.spx_price,
+        "spx_change_pct": data.spx_change_pct,
+        "btc_correlation_dxy": data.btc_correlation_dxy,
+        "last_updated": data.last_updated,
+    }
+
+
+@router.get("/news-velocity")
+async def get_news_velocity_endpoint() -> dict:
+    """Get news velocity — article count per crypto symbol from CryptoPanic RSS.
+
+    Returns per-symbol mention counts (last ~50 articles), total article count,
+    and the 10 most recent relevant article titles. Results are cached 5min.
+    """
+    from app.data.fetchers.news_fetcher import get_news_velocity
+    return await get_news_velocity()
+
+
+@router.get("/stablecoin-ratio")
+async def get_stablecoin_ratio() -> dict:
+    """Get Stablecoin Supply Ratio (SSR) — (USDT + USDC mcap) / total crypto mcap.
+
+    High SSR (> 0.15) signals bullish dry powder; low SSR (< 0.06) signals
+    most capital already deployed. Results are cached 15min.
+    """
+    from app.data.fetchers.coingecko_fetcher import get_stablecoin_supply_ratio
+    return await get_stablecoin_supply_ratio()
+
+
+@router.get("/elliott-wave/{symbol}")
+async def get_elliott_wave(symbol: str, tf: str = "4h") -> dict:
+    """Return the current Elliott Wave count and projected target for a symbol.
+
+    Args:
+        symbol: Trading pair (e.g. BTCUSDT).
+        tf: Timeframe string accepted by Binance (e.g. 1h, 4h, 1d).
+    """
+    from app.ai.signals.elliott_wave import count_elliott_waves
+    from app.data.fetchers.binance_fetcher import get_binance_fetcher
+
+    fetcher = get_binance_fetcher()
+    candles = await fetcher.get_klines(symbol.upper(), tf, limit=200)
+    if not candles:
+        return {"error": "No data"}
+
+    closes = [float(c[4]) for c in candles]
+    wave = count_elliott_waves(closes, closes[-1])
+
+    if not wave:
+        return {"symbol": symbol, "wave_context": None}
+
+    return {
+        "symbol": symbol,
+        "timeframe": tf,
+        "wave_context": {
+            "current_wave": wave.current_wave,
+            "wave_type": wave.wave_type,
+            "wave_label": wave.wave_label,
+            "projected_target": wave.projected_target,
+            "confidence": wave.confidence,
+            "pivot_count": len(wave.pivots),
+        },
+    }
+
+
+@router.get("/harmonic-patterns/{symbol}")
+async def get_harmonic_patterns_endpoint(symbol: str, tf: str = "4h") -> dict:
+    """Detect Gartley, Bat, Crab, and Butterfly harmonic patterns for a symbol.
+
+    Args:
+        symbol: Trading pair (e.g. BTCUSDT).
+        tf: Timeframe string accepted by Binance (e.g. 1h, 4h, 1d).
+    """
+    from app.ai.signals.harmonic_patterns import get_harmonic_patterns
+    from app.data.fetchers.binance_fetcher import get_binance_fetcher
+
+    fetcher = get_binance_fetcher()
+    candles = await fetcher.get_klines(symbol.upper(), tf, limit=200)
+    if not candles:
+        return {"patterns": []}
+
+    closes = [float(c[4]) for c in candles]
+    patterns = get_harmonic_patterns(closes)
+
+    return {
+        "symbol": symbol,
+        "timeframe": tf,
+        "patterns": [
+            {
+                "pattern_name": p.pattern_name,
+                "bias": p.bias,
+                "completion_zone_min": p.completion_zone[0],
+                "completion_zone_max": p.completion_zone[1],
+                "confidence": p.confidence,
+                "current_leg": p.current_leg,
+            }
+            for p in patterns[:5]  # Top 5 by confidence
+        ],
+    }
+
+
+@router.get("/mean-reversion/{symbol}")
+async def get_mean_reversion(
+    symbol: str,
+    tf: str = Query(default="1h", description="Kline interval, e.g. 1h, 4h, 1d"),
+    limit: int = Query(default=100, ge=20, le=500, description="Number of candles for OU fit"),
+) -> dict:
+    """Fit Ornstein-Uhlenbeck process and return mean reversion probability.
+
+    Estimates the probability that the current price will revert toward its
+    historical mean within the next N periods, based on the fitted OU speed
+    (theta), long-run mean (mu), and deviation from mean.
+    """
+    from app.ai.signals.ou_process import fit_ou_process, mean_reversion_probability
+
+    binance_url = "https://api.binance.com/api/v3/klines"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                binance_url,
+                params={"symbol": symbol.upper(), "interval": tf, "limit": limit},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=f"Binance API error: {exc.response.text}",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to reach Binance API: {exc}",
+            ) from exc
+
+    raw_klines: list[list] = resp.json()
+    if not raw_klines:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
+
+    closes = [float(k[4]) for k in raw_klines]
+    ou_params = fit_ou_process(closes)
+    current_price = closes[-1]
+    prob_data = mean_reversion_probability(current_price, ou_params)
+
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": tf,
+        "current_price": round(current_price, 6),
+        "ou_params": ou_params,
+        **prob_data,
+    }
+
+
+@router.get("/volatility/{symbol}")
+async def get_volatility_forecast(
+    symbol: str,
+    tf: str = Query(default="1d", description="Kline interval, e.g. 1h, 4h, 1d"),
+    limit: int = Query(default=60, ge=25, le=500, description="Number of candles"),
+) -> dict:
+    """EWMA volatility forecast and regime classification.
+
+    Uses RiskMetrics EWMA (lambda=0.94) to compute realized annualized
+    volatility and classify the current vol regime. Returns a signal:
+    'risk_off' for high/extreme vol, 'breakout_setup' for compressed vol,
+    'neutral' otherwise.
+    """
+    from app.ai.signals.volatility_forecaster import forecast_volatility
+
+    binance_url = "https://api.binance.com/api/v3/klines"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                binance_url,
+                params={"symbol": symbol.upper(), "interval": tf, "limit": limit},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=f"Binance API error: {exc.response.text}",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to reach Binance API: {exc}",
+            ) from exc
+
+    raw_klines: list[list] = resp.json()
+    if not raw_klines:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
+
+    closes = [float(k[4]) for k in raw_klines]
+    forecast = forecast_volatility(closes)
+    if not forecast:
+        raise HTTPException(status_code=422, detail="Insufficient data for volatility forecast")
+
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": tf,
+        "current_vol_pct": forecast.current_vol_pct,
+        "forecast_vol_pct": forecast.forecast_vol_pct,
+        "vol_regime": forecast.vol_regime,
+        "expanding": forecast.expanding,
+        "signal": forecast.signal,
+    }
+
+
+@router.get("/anomalies/{symbol}")
+async def get_anomalies(
+    symbol: str,
+    tf: str = Query(default="1h", description="Kline interval, e.g. 1h, 4h, 1d"),
+    limit: int = Query(default=60, ge=15, le=500, description="Number of candles to analyze"),
+    z_threshold: float = Query(default=2.5, ge=1.0, le=5.0, description="Z-score threshold for anomaly detection"),
+) -> dict:
+    """Detect anomalous candles using z-score analysis.
+
+    Flags candles where volume, body size, or wick ratio is statistically
+    unusual (above z_threshold sigma) relative to the recent window.
+    Useful for identifying potential manipulation, momentum bursts, or
+    key reversal candles.
+    """
+    from app.ai.signals.anomaly_detector import detect_anomalies
+
+    binance_url = "https://api.binance.com/api/v3/klines"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                binance_url,
+                params={"symbol": symbol.upper(), "interval": tf, "limit": limit},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=f"Binance API error: {exc.response.text}",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to reach Binance API: {exc}",
+            ) from exc
+
+    raw_klines: list[list] = resp.json()
+    if not raw_klines:
+        return {"symbol": symbol.upper(), "timeframe": tf, "anomalies": [], "count": 0}
+
+    # Convert raw Binance klines to dict format expected by detect_anomalies
+    candles = [
+        {
+            "time": int(k[0]) // 1000,
+            "open": float(k[1]),
+            "high": float(k[2]),
+            "low": float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        }
+        for k in raw_klines
+    ]
+
+    anomalies = detect_anomalies(candles, z_threshold=z_threshold)
+
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": tf,
+        "anomalies": anomalies,
+        "count": len(anomalies),
+    }
+
+
+@router.get("/portfolio-optimize")
+async def optimize_portfolio_endpoint(
+    symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT",
+    optimization: str = "max_sharpe",
+    lookback_days: int = 90,
+) -> dict:
+    """MPT portfolio optimization for given symbols.
+
+    Fetches daily OHLCV data from Binance, computes daily returns, then runs
+    Modern Portfolio Theory optimization (max Sharpe, min variance, or equal weight).
+
+    Args:
+        symbols: comma-separated list of Binance symbols (max 10)
+        optimization: one of "max_sharpe" | "min_variance" | "equal_weight"
+        lookback_days: number of trading days of history to use (default 90)
+    """
+    import asyncio
+    from app.data.fetchers.binance_fetcher import get_binance_fetcher
+    from app.ai.portfolio.mpt_optimizer import optimize_portfolio
+
+    sym_list = [s.strip().upper() for s in symbols.split(",")][:10]  # Max 10 symbols
+    fetcher = get_binance_fetcher()
+
+    # Fetch daily candles for all symbols concurrently
+    candles_list = await asyncio.gather(
+        *[fetcher.get_klines(sym, "1d", limit=lookback_days + 1) for sym in sym_list],
+        return_exceptions=True,
+    )
+
+    # Build returns matrix — align all series to the shortest common length
+    min_len: int | None = None
+    returns_data: list[list[float]] = []
+    valid_symbols: list[str] = []
+
+    for sym, candles in zip(sym_list, candles_list):
+        if isinstance(candles, Exception) or not candles or len(candles) < 10:
+            continue
+        closes = [float(c[4]) for c in candles]
+        returns = [(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, len(closes))]
+        returns_data.append(returns)
+        valid_symbols.append(sym)
+        if min_len is None or len(returns) < min_len:
+            min_len = len(returns)
+
+    if len(valid_symbols) < 2:
+        return {"error": "Need at least 2 valid symbols"}
+
+    # Align all return series to the same length
+    matrix = [[r[i] for r in returns_data] for i in range(min_len)]
+
+    result = optimize_portfolio(valid_symbols, matrix, optimization_type=optimization)
+    if not result:
+        return {"error": "Optimization failed"}
+
+    return {
+        "symbols": valid_symbols,
+        "weights": result.weights,
+        "expected_return_pct": result.expected_return,
+        "volatility_pct": result.volatility,
+        "sharpe_ratio": result.sharpe_ratio,
+        "optimization_type": result.optimization_type,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Alert Rules — Feature 70: Conditional Alert Chains
+# ---------------------------------------------------------------------------
+
+
+@router.get("/alert-rules")
+async def get_alert_rules_endpoint() -> dict:
+    """Return all registered conditional alert rules."""
+    from app.notifications.alert_rules import get_alert_rules
+
+    rules = get_alert_rules()
+    return {
+        "rules": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "symbol": r.symbol,
+                "active": r.active,
+                "message": r.message,
+                "cooldown_seconds": r.cooldown_seconds,
+                "conditions": [
+                    {"field": c.field, "operator": c.operator, "value": c.value}
+                    for c in r.conditions
+                ],
+            }
+            for r in rules
+        ]
+    }
+
+
+@router.post("/alert-rules")
+async def create_alert_rule_endpoint(body: dict) -> dict:
+    """Create or replace a conditional alert rule.
+
+    Request body fields:
+    - name (str, required)
+    - conditions (list[{field, operator, value}], required)
+    - symbol (str, optional) — restrict to a single symbol
+    - message (str, optional)
+    - cooldown_seconds (int, optional, default 3600)
+    - id (str, optional) — auto-generated UUID if omitted
+    """
+    import uuid
+
+    from app.notifications.alert_rules import AlertCondition, AlertRule, add_alert_rule
+
+    raw_conditions = body.get("conditions", [])
+    conditions = [AlertCondition(**c) for c in raw_conditions]
+
+    rule = AlertRule(
+        id=body.get("id", str(uuid.uuid4())),
+        name=body["name"],
+        symbol=body.get("symbol"),
+        conditions=conditions,
+        message=body.get("message", ""),
+        cooldown_seconds=int(body.get("cooldown_seconds", 3600)),
+    )
+    add_alert_rule(rule)
+    return {"status": "ok", "id": rule.id}
+
+
+@router.delete("/alert-rules/{rule_id}")
+async def delete_alert_rule_endpoint(rule_id: str) -> dict:
+    """Remove an alert rule by ID."""
+    from app.notifications.alert_rules import remove_alert_rule
+
+    remove_alert_rule(rule_id)
+    return {"status": "ok"}

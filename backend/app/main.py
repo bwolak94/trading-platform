@@ -5,12 +5,21 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlencode
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.api.v1 import agent, analyze, backtest, chat, intelligence, market, pro_analysis, settings, signals, strategy_params
+from app.api.v1 import agent, analyze, backtest, chat, intelligence, market, notifications, pro_analysis, settings, signals, simulation, strategy_params
+from app.api.v1.watchlist import router as watchlist_router
+from app.api.v1.webhook_settings import router as webhook_settings_router
+from app.api.v1.webhooks import router as webhooks_router
+from app.api.v1.signal_quality import router as signal_quality_router
+from app.api.v1.risk_advanced import router as risk_advanced_router
+from app.api.v1.market_intelligence import router as market_intelligence_router
+from app.api.v1.analytics import router as analytics_router
+from app.api.v1.automation import router as automation_router
 from app.core.config import settings as app_settings
 from app.core.exceptions import (
     DataFetchError,
@@ -32,6 +41,14 @@ async def lifespan(app: FastAPI):
 
     # Enforce production security — raises RuntimeError on insecure defaults
     app_settings.enforce_production_security()
+
+    # Load all Binance USDT perpetual futures symbols dynamically
+    from app.core.symbols import load_dynamic_symbols
+    try:
+        loaded_symbols = await load_dynamic_symbols()
+        logger.info("Loaded %d dynamic futures symbols from Binance", len(loaded_symbols))
+    except Exception as exc:
+        logger.warning("Failed to load dynamic symbols, falling back to static list: %s", exc)
 
     # Validate production configuration
     prod_warnings = app_settings.validate_production()
@@ -121,7 +138,56 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Failed to start WhaleTracker: %s", exc)
 
+    # Start Paper Trading Simulation Engine
+    from app.ai.simulation.paper_trading_engine import get_paper_trading_engine
+
+    paper_engine = get_paper_trading_engine()
+    try:
+        await paper_engine.start()
+        logger.info("Paper Trading Engine started — session %s", paper_engine.session_id)
+    except Exception as exc:
+        logger.warning("Failed to start PaperTradingEngine: %s", exc)
+
+    # Start APScheduler for periodic report jobs
+    from app.ai.reports.daily_briefing import generate_and_send_daily_briefing
+    from app.ai.reports.weekly_report import generate_weekly_report
+
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        generate_and_send_daily_briefing,
+        "cron",
+        hour=0,
+        minute=0,
+        id="daily_briefing",
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        generate_weekly_report,
+        "cron",
+        day_of_week="mon",
+        hour=8,
+        minute=0,
+        id="weekly_report",
+        misfire_grace_time=300,
+    )
+    try:
+        scheduler.start()
+        logger.info("APScheduler started — daily_briefing at 00:00 UTC, weekly_report on Mon 08:00 UTC")
+    except Exception as exc:
+        logger.warning("Failed to start APScheduler: %s", exc)
+
     yield
+
+    # Shutdown APScheduler
+    logger.info("Shutting down APScheduler...")
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception as exc:
+        logger.warning("APScheduler shutdown error: %s", exc)
+
+    # Shutdown Paper Trading Engine
+    logger.info("Shutting down Paper Trading Engine...")
+    await paper_engine.stop()
 
     # Shutdown Whale Tracker
     logger.info("Shutting down Whale Tracker...")
@@ -346,6 +412,15 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(pro_analysis.router, prefix="/api/v1")
 app.include_router(strategy_params.router, prefix="/api/v1")
+app.include_router(simulation.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(watchlist_router, prefix="/api/v1")
+app.include_router(webhook_settings_router, prefix="/api/v1")
+app.include_router(signal_quality_router, prefix="/api/v1")
+app.include_router(risk_advanced_router, prefix="/api/v1")
+app.include_router(market_intelligence_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(automation_router, prefix="/api/v1")
 
 
 # Health & status

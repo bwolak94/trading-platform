@@ -15,6 +15,40 @@ from app.data.processors.feature_engineer import compute_features
 logger = logging.getLogger(__name__)
 
 
+def calculate_overfitting_score(is_sharpe: float, oos_sharpe: float) -> float:
+    """Compare in-sample vs out-of-sample Sharpe ratio.
+
+    Returns 0.0 (no overfitting) to 1.0 (severe overfitting).
+    Negative OOS Sharpe with positive IS = near 1.0.
+    """
+    if is_sharpe <= 0:
+        return 0.0
+    if oos_sharpe <= 0:
+        return 1.0
+    ratio = oos_sharpe / is_sharpe
+    return round(max(0.0, min(1.0, 1.0 - ratio)), 3)
+
+
+def calculate_sortino_ratio(
+    returns: list[float],
+    risk_free_rate: float = 0.0,
+    periods_per_year: int = 252,
+) -> float:
+    """Sortino ratio — only penalizes downside deviation."""
+    if not returns or len(returns) < 2:
+        return 0.0
+    arr = np.array(returns)
+    excess = arr - risk_free_rate / periods_per_year
+    downside = excess[excess < 0]
+    if len(downside) == 0:
+        return 10.0  # No downside = very high
+    downside_std = float(np.std(downside)) * np.sqrt(periods_per_year)
+    if downside_std == 0:
+        return 0.0
+    mean_excess = float(np.mean(excess)) * periods_per_year
+    return round(mean_excess / downside_std, 3)
+
+
 @dataclass
 class Trade:
     """Represents a single completed trade from backtesting."""

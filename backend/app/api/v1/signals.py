@@ -1,5 +1,6 @@
 """Signal endpoints."""
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -67,6 +68,48 @@ async def get_active_signals(
         data=[SignalResponse.model_validate(s) for s in signals],
         meta={"total": len(signals), "limit": 50, "offset": 0},
     )
+
+
+@router.get("/explain/{signal_id}")
+async def explain_signal(
+    signal_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Generate an AI explanation for a specific signal using Claude API.
+
+    Only available for signals with confidence >= 70%.
+    Requires ANTHROPIC_API_KEY environment variable.
+    """
+    from app.ai.reports.signal_explainer import generate_signal_explanation
+
+    result = await db.execute(select(Signal).where(Signal.id == signal_id))
+    signal = result.scalar_one_or_none()
+
+    if not signal:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    signal_dict: dict[str, Any] = {
+        "symbol": signal.asset,
+        "action": signal.direction,
+        "confidence": float(signal.confidence),
+        "regime": signal.regime,
+        "strategy_name": "unknown",
+        "entry": float(signal.entry_price) if signal.entry_price is not None else 0.0,
+        "stop_loss": float(signal.stop_loss) if signal.stop_loss is not None else 0.0,
+        "tp_levels": (
+            [float(signal.take_profit_1)]
+            if signal.take_profit_1 is not None
+            else []
+        ),
+        "conditions": signal.factors if signal.factors else [],
+    }
+
+    explanation = await generate_signal_explanation(signal_dict)
+    return {
+        "signal_id": str(signal_id),
+        "explanation": explanation,
+        "generated": explanation is not None,
+    }
 
 
 @router.get("/{signal_id}", response_model=SignalResponse)

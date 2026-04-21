@@ -272,8 +272,13 @@ async def run_analysis(
 
     Returns regime classification, strategy signals, and market summary.
     """
+    # Normalize asset: accept both "BTCUSDT" and "BTC/USDT" formats
     if asset not in VALID_ASSETS:
-        raise HTTPException(status_code=400, detail=f"Invalid asset. Valid: {sorted(VALID_ASSETS)}")
+        _normalized = next((v for v in VALID_ASSETS if v.replace("/", "") == asset.upper()), None)
+        if _normalized:
+            asset = _normalized
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid asset. Valid: {sorted(VALID_ASSETS)}")
     if timeframe not in VALID_TIMEFRAMES:
         raise HTTPException(status_code=400, detail=f"Invalid timeframe. Valid: {sorted(VALID_TIMEFRAMES)}")
 

@@ -12,15 +12,18 @@ import {
   LineStyle,
   PriceScaleMode,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AssetSearchSelect } from "../ui/AssetSearchSelect";
 import {
   fetchKlines,
   fetchIndicators,
   fetchLiquidationHeatmap,
   fetchNews,
+  fetchSignalMarkersForSymbol,
   type LiquidationHeatmapData,
   type IndicatorData,
   type NewsItemData,
+  type SignalMarker,
 } from "../../api/client";
 
 const CRYPTO_ASSETS = [
@@ -45,17 +48,10 @@ const CRYPTO_ASSETS = [
   { label: "SUI/USDT", value: "SUIUSDT" },
   { label: "PEPE/USDT", value: "PEPEUSDT" },
 ] as const;
-const FOREX_ASSETS = [
-  { label: "EUR/USD", value: "EURUSD" },
-  { label: "GBP/USD", value: "GBPUSD" },
-  { label: "XAU/USD (Gold)", value: "XAUUSD" },
-  { label: "GBP/JPY", value: "GBPJPY" },
-] as const;
-const ALL_ASSETS = [...CRYPTO_ASSETS, ...FOREX_ASSETS];
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
 const CANDLE_COUNTS = [100, 200, 300, 500, 1000] as const;
 
-type Asset = (typeof ALL_ASSETS)[number]["value"];
+type Asset = string;
 type Timeframe = (typeof TIMEFRAMES)[number];
 type CandleCountOption = (typeof CANDLE_COUNTS)[number];
 
@@ -156,13 +152,14 @@ interface PriceChartProps {
   compact?: boolean;
   defaultAsset?: string;
   defaultTimeframe?: string;
+  /** When true, renders the Volume Profile / Visible Range overlay on the right side of the chart */
+  showVPVR?: boolean;
+  /** When provided, overlays signal markers on the candlestick series */
+  signals?: SignalMarker[];
 }
 
-export function PriceChart({ onAssetChange, activePosition, compact, defaultAsset, defaultTimeframe }: PriceChartProps = {}) {
-  const [asset, setAsset] = useState<Asset>(() => {
-    if (defaultAsset && ALL_ASSETS.some((a) => a.value === defaultAsset)) return defaultAsset as Asset;
-    return "BTCUSDT";
-  });
+export function PriceChart({ onAssetChange, activePosition, compact, defaultAsset, defaultTimeframe, showVPVR: showVPVRProp = false, signals: signalsProp }: PriceChartProps = {}) {
+  const [asset, setAsset] = useState<Asset>(() => defaultAsset ?? "BTCUSDT");
   const [tf, setTf] = useState<Timeframe>(() => {
     if (defaultTimeframe && TIMEFRAMES.includes(defaultTimeframe as Timeframe)) return defaultTimeframe as Timeframe;
     return "1h";
@@ -171,9 +168,14 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorId>>(new Set(["ema_20", "ema_50"]));
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false);
   const [heikinAshi, setHeikinAshi] = useState(false);
+  const [showVPVR, setShowVPVR] = useState(showVPVRProp);
+  const [showSignals, setShowSignals] = useState(false);
+  const [signalMarkers, setSignalMarkers] = useState<SignalMarker[]>(signalsProp ?? []);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  const isCrypto = CRYPTO_SET.has(asset);
-  const label = ALL_ASSETS.find((a) => a.value === asset)?.label ?? asset;
+  // Any USDT pair (including dynamic futures symbols) is treated as crypto
+  const isCrypto = asset.endsWith("USDT") || CRYPTO_SET.has(asset);
 
   const toggleIndicator = (id: IndicatorId) => {
     setActiveIndicators((prev) => {
@@ -183,19 +185,52 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
     });
   };
 
+  // Fetch signal markers when showSignals is toggled on
+  useEffect(() => {
+    if (!showSignals) { setSignalMarkers([]); return; }
+    void fetchSignalMarkersForSymbol(asset, 50)
+      .then((res) => setSignalMarkers(res.signals))
+      .catch(() => setSignalMarkers([]));
+  }, [showSignals, asset]);
+
+  // Sync external signalsProp when provided
+  useEffect(() => {
+    if (signalsProp) setSignalMarkers(signalsProp);
+  }, [signalsProp]);
+
+  // Fullscreen toggle — uses the Fullscreen API on the chart wrapper div
+  const handleFullscreen = useCallback(() => {
+    const el = chartContainerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      void el.requestFullscreen().catch(() => {});
+    } else {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // Track fullscreen state changes (ESC key, etc.)
+  useEffect(() => {
+    function onFullscreenChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
   // Serialize active indicators to string for key
   const indicatorKey = Array.from(activeIndicators).sort().join(",");
 
   return (
-    <div className="rounded-lg border border-border bg-surface">
+    <div ref={chartContainerRef} id="price-chart-container" className={`rounded-lg border border-border bg-surface ${isFullscreen ? "h-screen overflow-hidden" : ""}`}>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-2 py-2 sm:px-4">
         <div className="flex flex-wrap items-center gap-2">
-          <select value={asset} onChange={(e) => { const v = e.target.value as Asset; setAsset(v); onAssetChange?.(v, tf); }}
-            className="min-h-[44px] rounded border border-border bg-background px-3 py-1.5 text-sm font-semibold text-white focus:outline-none"
-            aria-label="Select pair">
-            {ALL_ASSETS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </select>
+          <AssetSearchSelect
+            value={asset}
+            onChange={(v) => { setAsset(v); onAssetChange?.(v, tf); }}
+            aria-label="Select pair"
+          />
 
           <div className="flex flex-wrap gap-0.5">
             {TIMEFRAMES.map((t) => (
@@ -216,7 +251,7 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Heikin-Ashi toggle */}
           <button type="button" onClick={() => setHeikinAshi((prev) => !prev)}
             className={`min-h-[44px] min-w-[44px] rounded px-2.5 py-1.5 text-xs font-bold transition-colors ${heikinAshi ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
@@ -224,6 +259,24 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
             aria-pressed={heikinAshi}
             title="Heikin-Ashi">
             HA
+          </button>
+
+          {/* Volume Profile toggle */}
+          <button type="button" onClick={() => setShowVPVR((prev) => !prev)}
+            className={`min-h-[44px] flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${showVPVR ? "bg-orange-500/20 border border-orange-500/50 text-orange-400" : "bg-background text-gray-400 hover:text-white"}`}
+            aria-label={showVPVR ? "Hide Volume Profile" : "Show Volume Profile"}
+            aria-pressed={showVPVR}
+            title="Volume Profile (VPVR)">
+            VP
+          </button>
+
+          {/* Show Signals toggle */}
+          <button type="button" onClick={() => setShowSignals((prev) => !prev)}
+            className={`min-h-[44px] flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${showSignals ? "bg-accent/20 border border-accent/50 text-accent" : "bg-background text-gray-400 hover:text-white"}`}
+            aria-label={showSignals ? "Hide signal overlay" : "Show signal overlay"}
+            aria-pressed={showSignals}
+            title="Signal Overlay">
+            Signals
           </button>
 
         {/* Indicators toggle button */}
@@ -234,6 +287,22 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           Indicators ({activeIndicators.size})
+        </button>
+
+        {/* Fullscreen toggle */}
+        <button type="button" onClick={handleFullscreen}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded bg-background px-2.5 py-1.5 text-xs text-gray-400 transition-colors hover:text-white"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          title={isFullscreen ? "Exit fullscreen (ESC)" : "Fullscreen"}>
+          {isFullscreen ? (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L4 4m0 0v4m0-4h4M15 9l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0h4m-4 0v-4M15 15l5 5m0 0h-4m4 0v-4" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+            </svg>
+          )}
         </button>
         </div>
       </div>
@@ -269,7 +338,8 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
       {/* Chart — all pairs now supported */}
       <ChartCanvas key={`${asset}-${tf}-${count}-${indicatorKey}-${heikinAshi}`}
         asset={asset} timeframe={tf} candleLimit={count}
-        activeIndicators={activeIndicators} activePosition={activePosition} compact={compact} heikinAshi={heikinAshi} />
+        activeIndicators={activeIndicators} activePosition={activePosition} compact={compact} heikinAshi={heikinAshi}
+        showVPVR={showVPVR} signals={signalMarkers} isFullscreen={isFullscreen} />
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border px-4 py-1.5 text-xs text-gray-500">
@@ -311,16 +381,21 @@ function toHeikinAshi(klines: { time: number; open: number; high: number; low: n
   return result;
 }
 
-function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePosition, compact, heikinAshi }: {
+function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePosition, compact, heikinAshi, showVPVR, signals, isFullscreen }: {
   asset: string; timeframe: string; candleLimit: number; activeIndicators: Set<IndicatorId>;
   activePosition?: Record<string, { type: string; entry: number; sl: number; tps: number[]; action: string; strategy: string; confidence: number }>;
   compact?: boolean;
   heikinAshi?: boolean;
+  showVPVR?: boolean;
+  signals?: SignalMarker[];
+  isFullscreen?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState<OHLCVInfo | null>(null);
   const [hover, setHover] = useState<OHLCVInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [vpvrData, setVpvrData] = useState<VPVRBin[] | null>(null);
+  const [chartDimensions, setChartDimensions] = useState<{ height: number; currentPrice: number; priceMin: number; priceMax: number } | null>(null);
 
   const display = hover ?? bar;
 
@@ -332,9 +407,11 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
     const hasVolHeatmap = activeIndicators.has("vol_heatmap");
     const hasSessions = activeIndicators.has("sessions");
 
-    // Responsive chart height: use smaller height on mobile
+    // Responsive chart height: use smaller height on mobile, full viewport height in fullscreen
     const isMobile = el.clientWidth < 768;
-    const chartHeight = compact ? (isMobile ? 250 : 350) : (isMobile ? 300 : 500);
+    const chartHeight = isFullscreen
+      ? (window.innerHeight - 60)
+      : compact ? (isMobile ? 250 : 350) : (isMobile ? 300 : 500);
 
     const chart = createChart(el, {
       width: el.clientWidth, height: chartHeight,
@@ -371,7 +448,9 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
 
     const onResize = () => {
       const mobile = el.clientWidth < 768;
-      const h = compact ? (mobile ? 250 : 350) : (mobile ? 300 : 500);
+      const h = isFullscreen
+        ? (window.innerHeight - 60)
+        : compact ? (mobile ? 250 : 350) : (mobile ? 300 : 500);
       chart.applyOptions({ width: el.clientWidth, height: h });
     };
     window.addEventListener("resize", onResize);
@@ -392,6 +471,27 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
         prevClose = klines.length > 1 ? klines[klines.length - 2]!.close : last.open;
         const ch = last.close - prevClose;
         setBar({ open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
+
+        // Compute VPVR bins from loaded candle data
+        if (showVPVR) {
+          const bins = computeVPVRBins(klines, 50);
+          const priceMin = Math.min(...klines.map((k) => k.low));
+          const priceMax = Math.max(...klines.map((k) => k.high));
+          setVpvrData(bins);
+          setChartDimensions({ height: chartHeight, currentPrice: last.close, priceMin, priceMax });
+        }
+      }
+
+      // Apply signal markers on the candlestick series
+      if (signals && signals.length > 0) {
+        const signalMarkersForSeries: SeriesMarker<Time>[] = signals.map((sig) => ({
+          time: sig.time as Time,
+          position: sig.direction === "LONG" ? "belowBar" as const : "aboveBar" as const,
+          color: sig.direction === "LONG" ? "#4ade80" : "#f87171",
+          shape: sig.direction === "LONG" ? "arrowUp" as const : "arrowDown" as const,
+          text: `${sig.strategy} ${Math.round(sig.confidence * 100)}%`,
+        }));
+        cs.setMarkers(signalMarkersForSeries);
       }
 
       // Draw active agent position on chart
@@ -471,7 +571,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
     }).catch(() => setLoading(false));
 
     // Live updates — WebSocket for crypto, polling for forex
-    const isCryptoPair = CRYPTO_SET.has(asset.toUpperCase());
+    const isCryptoPair = asset.toUpperCase().endsWith("USDT") || CRYPTO_SET.has(asset.toUpperCase());
     let ws: WebSocket | null = null;
     let reconTimer: ReturnType<typeof setTimeout> | null = null;
     let forexPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -592,8 +692,169 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
           </div>
         </div>
       )}
+      {/* VPVR SVG overlay — rendered on right side of chart */}
+      {showVPVR && vpvrData && chartDimensions && (
+        <VolumeProfileOverlay
+          bins={vpvrData}
+          chartHeight={chartDimensions.height}
+          currentPrice={chartDimensions.currentPrice}
+          priceMin={chartDimensions.priceMin}
+          priceMax={chartDimensions.priceMax}
+        />
+      )}
       <div ref={containerRef} style={{ width: "100%" }} />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Volume Profile (VPVR)                                             */
+/* ------------------------------------------------------------------ */
+
+interface VPVRBin {
+  priceMin: number;
+  priceMax: number;
+  priceMid: number;
+  volume: number;
+  isPoC: boolean;
+}
+
+/**
+ * Calculates Volume Profile bins from OHLCV candle data.
+ * Each candle's volume is assigned to a price bin based on its typical price (high+low+close)/3.
+ * Returns bins sorted by price ascending, with the Point of Control (PoC) flagged.
+ */
+function computeVPVRBins(
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  numBins: number = 50,
+): VPVRBin[] {
+  if (klines.length < 2) return [];
+
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const k of klines) {
+    if (k.low < priceMin) priceMin = k.low;
+    if (k.high > priceMax) priceMax = k.high;
+  }
+  const range = priceMax - priceMin;
+  if (range <= 0) return [];
+
+  const binSize = range / numBins;
+  const volumes = new Float64Array(numBins);
+
+  for (const k of klines) {
+    // Typical price as the distribution center for this candle's volume
+    const typicalPrice = (k.high + k.low + k.close) / 3;
+    const binIndex = Math.min(numBins - 1, Math.max(0, Math.floor((typicalPrice - priceMin) / binSize)));
+    volumes[binIndex]! += k.volume;
+  }
+
+  let maxVolume = 0;
+  for (let i = 0; i < numBins; i++) {
+    if (volumes[i]! > maxVolume) maxVolume = volumes[i]!;
+  }
+
+  let pocIndex = 0;
+  for (let i = 0; i < numBins; i++) {
+    if (volumes[i]! > volumes[pocIndex]!) pocIndex = i;
+  }
+
+  return Array.from({ length: numBins }, (_, i) => ({
+    priceMin: priceMin + i * binSize,
+    priceMax: priceMin + (i + 1) * binSize,
+    priceMid: priceMin + (i + 0.5) * binSize,
+    volume: volumes[i]!,
+    isPoC: i === pocIndex,
+  })).filter((b) => b.volume > 0);
+}
+
+interface VolumeProfileOverlayProps {
+  bins: VPVRBin[];
+  chartHeight: number;
+  currentPrice: number;
+  priceMin: number;
+  priceMax: number;
+}
+
+/**
+ * Renders the Volume Profile as an SVG overlay on the right side of the chart.
+ * Bars are colored green (above current price), red (below), with PoC in yellow/orange.
+ * Width is 15% of the chart container; opacity 0.7.
+ */
+function VolumeProfileOverlay({ bins, chartHeight, currentPrice, priceMin, priceMax }: VolumeProfileOverlayProps) {
+  if (bins.length === 0 || priceMax <= priceMin) return null;
+
+  const priceRange = priceMax - priceMin;
+  const maxVolume = Math.max(...bins.map((b) => b.volume));
+
+  return (
+    <svg
+      style={{ position: "absolute", right: 0, top: 0, width: "15%", height: chartHeight }}
+      className="pointer-events-none opacity-70"
+      aria-hidden="true"
+      role="img"
+      aria-label="Volume Profile overlay"
+    >
+      {bins.map((bin, i) => {
+        // Map price to Y coordinate (price increases upward, SVG Y increases downward)
+        const yTop = chartHeight * (1 - (bin.priceMax - priceMin) / priceRange);
+        const yBottom = chartHeight * (1 - (bin.priceMin - priceMin) / priceRange);
+        const barHeight = Math.max(1, yBottom - yTop);
+
+        // Width proportional to volume vs max, capped at 95% of the overlay width
+        const barWidthPct = (bin.volume / maxVolume) * 95;
+
+        const isAboveCurrentPrice = bin.priceMid > currentPrice;
+        let fillColor: string;
+        if (bin.isPoC) {
+          fillColor = "#f97316"; // orange for Point of Control
+        } else if (isAboveCurrentPrice) {
+          fillColor = "rgba(74,222,128,0.6)"; // green
+        } else {
+          fillColor = "rgba(248,113,113,0.6)"; // red
+        }
+
+        return (
+          <g key={i}>
+            <rect
+              x={`${100 - barWidthPct}%`}
+              y={yTop}
+              width={`${barWidthPct}%`}
+              height={barHeight}
+              fill={fillColor}
+            />
+            {bin.isPoC && (
+              <line
+                x1="0%"
+                x2="100%"
+                y1={yTop + barHeight / 2}
+                y2={yTop + barHeight / 2}
+                stroke="#facc15"
+                strokeWidth={1}
+                strokeDasharray="3,2"
+              />
+            )}
+          </g>
+        );
+      })}
+      {/* PoC label */}
+      {bins.find((b) => b.isPoC) && (() => {
+        const poc = bins.find((b) => b.isPoC)!;
+        const yMid = chartHeight * (1 - (poc.priceMid - priceMin) / priceRange);
+        return (
+          <text
+            x="2"
+            y={Math.max(10, Math.min(chartHeight - 4, yMid - 3))}
+            fill="#facc15"
+            fontSize="9"
+            fontFamily="Inter, sans-serif"
+            fontWeight="bold"
+          >
+            PoC
+          </text>
+        );
+      })()}
+    </svg>
   );
 }
 

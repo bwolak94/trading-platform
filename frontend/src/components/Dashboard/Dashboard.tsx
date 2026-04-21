@@ -5,23 +5,53 @@ import {
   fetchActiveSignals,
   fetchSettings,
   resetKillSwitch,
+  startSimulation,
+  stopSimulation,
 } from "../../api/client";
+import type { SimulatedPosition } from "../../api/client";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useAppStore } from "../../store";
 import type { Signal } from "../../types";
 import { RiskPanel } from "../RiskPanel/RiskPanel";
 import { SignalCard } from "../SignalCard/SignalCard";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { BotPerformancePanel } from "./BotPerformancePanel";
 import { CorrelationPanel } from "./CorrelationPanel";
+import { PositionDetailDrawer } from "./PositionDetailDrawer";
 import { FundingRatePanel } from "./FundingRatePanel";
 import { Heatmap } from "./Heatmap";
 import { LiquidationHeatmap } from "./LiquidationHeatmap";
 import { LiveRegimePanel } from "./LiveRegimePanel";
+import { NotificationHistoryPanel } from "./NotificationHistoryPanel";
+import { SignalHistoryPanel } from "./SignalHistoryPanel";
 import { OrderFlowPanel } from "./OrderFlowPanel";
 import { MultiChart } from "./MultiChart";
 import { IntelligencePanel } from "./IntelligencePanel";
+import { SimulationPanel } from "./SimulationPanel";
 import { TradingChat } from "./TradingChat";
 import { PnLSimulator } from "./PnLSimulator";
+import { CommandPalette } from "../ui/CommandPalette";
+import { useHotkeys } from "../hooks/useHotkeys";
+import { ShortcutsHelp } from "../ui/ShortcutsHelp";
+import { EquityCurvePanel } from "./EquityCurvePanel";
+import { MonteCarloPanel } from "./MonteCarloPanel";
+import { MarketOverviewPanel } from "./MarketOverviewPanel";
+import { MomentumRankPanel } from "./MomentumRankPanel";
+import { StrategyHeatmapPanel } from "./StrategyHeatmapPanel";
+import { AttributionPanel } from "./AttributionPanel";
+import { TradeDurationPanel } from "./TradeDurationPanel";
+import { EntryTimingHeatmapPanel } from "./EntryTimingHeatmapPanel";
+import { FundingHeatmapPanel } from "./FundingHeatmapPanel";
+import { ExposureHeatmapPanel } from "./ExposureHeatmapPanel";
+import { LiveReadinessPanel } from "./LiveReadinessPanel";
+import { MacroPanel } from "./MacroPanel";
+import { MarketSentimentPanel } from "./MarketSentimentPanel";
+import { SectorMomentumPanel } from "./SectorMomentumPanel";
+import { SessionClock } from "../ui/SessionClock";
+import { SettingsPanel } from "./SettingsPanel";
+import { useTheme } from "../hooks/useTheme";
+import { usePanelOrder } from "../hooks/usePanelOrder";
+import type { PanelId } from "../hooks/usePanelOrder";
 
 /* ── Section Error Boundary ─────────────────────────────────────────── */
 
@@ -92,17 +122,55 @@ export function Dashboard() {
     drawdownPct, setDrawdownPct,
   } = useAppStore();
 
+  // Theme management (applies data-theme attribute to document root)
+  useTheme();
+
+  const { order, moveUp, moveDown, resetLayout } = usePanelOrder();
+  const [showSettings, setShowSettings] = useState(false);
+
   const [sideTab, setSideTab] = useState<SideTab>("orderflow");
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [chartAsset, setChartAsset] = useState("BTCUSDT");
   const [chartTf, setChartTf] = useState("1h");
   const [exportFormat, setExportFormat] = useState<"csv" | "json">("csv");
   const [multiChartKey, setMultiChartKey] = useState(0);
+  const [focusedPosition, setFocusedPosition] = useState<SimulatedPosition | null>(null);
 
-  /** Item 37 — Signal card click navigates chart to that asset/timeframe */
+  /** Command palette — navigate chart to a symbol */
+  const handleCommandPaletteSymbol = useCallback((symbol: string) => {
+    setChartAsset(symbol);
+    setMultiChartKey((k) => k + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  /** Command palette — start simulation bot */
+  const handleCommandPaletteStartBot = useCallback(() => {
+    void startSimulation();
+  }, []);
+
+  /** Command palette — stop simulation bot */
+  const handleCommandPaletteStopBot = useCallback(() => {
+    void stopSimulation();
+  }, []);
+
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+
+  /** Signal card click navigates chart to that asset/timeframe */
   const handleSignalNavigate = useCallback((asset: string, timeframe?: string) => {
     setChartAsset(asset);
     if (timeframe) setChartTf(timeframe);
+    setMultiChartKey((k) => k + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  /** Simulation position click — open drawer and navigate chart */
+  const handlePositionClick = useCallback((pos: SimulatedPosition) => {
+    setFocusedPosition(pos);
+  }, []);
+
+  /** Navigate chart from drawer "View on Chart" button */
+  const handleDrawerNavigate = useCallback((symbol: string) => {
+    setChartAsset(symbol);
     setMultiChartKey((k) => k + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
@@ -122,6 +190,11 @@ export function Dashboard() {
 
   const signalsQuery = useQuery({ queryKey: ["activeSignals"], queryFn: fetchActiveSignals, refetchInterval: 30_000 });
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+
+  useHotkeys({
+    onTimeframeChange: useCallback((tf: string) => { setChartTf(tf); setMultiChartKey((k) => k + 1); }, []),
+    onRefresh: useCallback(() => { void signalsQuery.refetch(); }, [signalsQuery]),
+  });
 
   useEffect(() => { if (signalsQuery.data) setActiveSignals(signalsQuery.data.data); }, [signalsQuery.data, setActiveSignals]);
   useEffect(() => {
@@ -208,6 +281,41 @@ export function Dashboard() {
           <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-bullish" : "bg-bearish"}`} />
           {isConnected ? "Connected" : "Disconnected"}
         </div>
+        <SessionClock />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={resetLayout}
+            className="rounded border border-border/50 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Reset dashboard panel layout to default"
+            title="Reset layout"
+          >
+            Reset Layout
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowShortcutsHelp(true)}
+            className="rounded border border-border/50 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Show keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+          >
+            ?
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="rounded border border-border/50 p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Open settings"
+            title="Settings"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Chart + Side Panel */}
@@ -255,6 +363,29 @@ export function Dashboard() {
         <LiveRegimePanel />
       </SectionErrorBoundary>
 
+      {/* Market Overview */}
+      <SectionErrorBoundary sectionName="Market Overview">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <MarketOverviewPanel />
+          </div>
+          <MomentumRankPanel />
+        </div>
+      </SectionErrorBoundary>
+
+      {/* Macro Overlay + Sector Momentum */}
+      <SectionErrorBoundary sectionName="Macro & Sector Momentum">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+          <MacroPanel />
+          <SectorMomentumPanel />
+        </div>
+      </SectionErrorBoundary>
+
+      {/* Market Sentiment (L/S Ratio, News Velocity, SSR) */}
+      <SectionErrorBoundary sectionName="Market Sentiment">
+        <MarketSentimentPanel />
+      </SectionErrorBoundary>
+
       {/* Market Intelligence */}
       <SectionErrorBoundary sectionName="Market Intelligence">
         <IntelligencePanel />
@@ -282,6 +413,69 @@ export function Dashboard() {
           <AnalysisPanel />
         </div>
       </SectionErrorBoundary>
+
+      {/* Paper Trading Simulation */}
+      <SectionErrorBoundary sectionName="Simulation">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+          <SimulationPanel onPositionClick={handlePositionClick} />
+          <div data-section="bot-performance">
+            <BotPerformancePanel />
+          </div>
+        </div>
+      </SectionErrorBoundary>
+
+      {/* Analytics */}
+      <SectionErrorBoundary sectionName="Analytics">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+          <EquityCurvePanel />
+          <StrategyHeatmapPanel />
+        </div>
+      </SectionErrorBoundary>
+
+      {/* Trade Duration + Entry Timing */}
+      <SectionErrorBoundary sectionName="Trade Duration & Entry Timing">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+          <TradeDurationPanel />
+          <EntryTimingHeatmapPanel />
+        </div>
+      </SectionErrorBoundary>
+
+      {/* Attribution */}
+      <SectionErrorBoundary sectionName="Attribution">
+        <AttributionPanel />
+      </SectionErrorBoundary>
+
+      {/* Exposure Heatmap */}
+      <SectionErrorBoundary sectionName="Exposure Heatmap">
+        <ExposureHeatmapPanel />
+      </SectionErrorBoundary>
+
+      {/* Funding Heatmap */}
+      <SectionErrorBoundary sectionName="Funding Heatmap">
+        <FundingHeatmapPanel />
+      </SectionErrorBoundary>
+
+      {/* Live Readiness */}
+      <SectionErrorBoundary sectionName="Live Readiness">
+        <LiveReadinessPanel />
+      </SectionErrorBoundary>
+
+      {/* Signal History */}
+      <SectionErrorBoundary sectionName="Signal History">
+        <SignalHistoryPanel />
+      </SectionErrorBoundary>
+
+      {/* Notification History */}
+      <SectionErrorBoundary sectionName="Notification History">
+        <NotificationHistoryPanel />
+      </SectionErrorBoundary>
+
+      {/* Position Detail Drawer — rendered at root level to escape layout containers */}
+      <PositionDetailDrawer
+        position={focusedPosition}
+        onClose={() => setFocusedPosition(null)}
+        onNavigateToChart={handleDrawerNavigate}
+      />
 
       {/* Signals + Risk */}
       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
@@ -336,6 +530,15 @@ export function Dashboard() {
           </div>
         </SectionErrorBoundary>
       </div>
+
+      {/* Command Palette — global Cmd+K / Ctrl+K shortcut */}
+      <CommandPalette
+        onSelectSymbol={handleCommandPaletteSymbol}
+        onStartBot={handleCommandPaletteStartBot}
+        onStopBot={handleCommandPaletteStopBot}
+      />
+
+      <ShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
     </div>
   );
 }

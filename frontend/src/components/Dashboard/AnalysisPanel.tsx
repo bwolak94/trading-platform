@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { runAnalysis, type AnalysisResult } from "../../api/client";
-
-const ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"];
+import { AssetSearchSelect } from "../ui/AssetSearchSelect";
 const TIMEFRAMES = ["1h", "4h", "1d"];
 const STRATEGIES = [
   { value: "", label: "All Strategies" },
@@ -19,7 +18,7 @@ const regimeColors: Record<string, string> = {
 };
 
 export function AnalysisPanel() {
-  const [asset, setAsset] = useState("BTC/USDT");
+  const [asset, setAsset] = useState("BTCUSDT");
   const [tf, setTf] = useState("4h");
   const [strategy, setStrategy] = useState("");
   const [loading, setLoading] = useState(false);
@@ -49,10 +48,11 @@ export function AnalysisPanel() {
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
           <label className="mb-1 block text-xs text-gray-500">Asset</label>
-          <select value={asset} onChange={(e) => setAsset(e.target.value)}
-            className="rounded border border-border bg-background px-3 py-1.5 text-sm text-white" aria-label="Asset">
-            {ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <AssetSearchSelect
+            value={asset}
+            onChange={(v) => setAsset(v)}
+            aria-label="Asset"
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs text-gray-500">Timeframe</label>

@@ -694,6 +694,37 @@ export async function fetchFundingRates(
   return data;
 }
 
+// --- Funding Rates (enhanced) ---
+
+export interface FundingRateEntry {
+  symbol: string;
+  funding_rate: number;
+  next_funding_time: number;
+}
+
+export interface FundingRatesData {
+  rates: FundingRateEntry[];
+  extreme_longs: FundingRateEntry[];  // rate > 0.1%
+  extreme_shorts: FundingRateEntry[]; // rate < -0.05%
+}
+
+export async function fetchFundingRatesEnhanced(): Promise<FundingRatesData> {
+  const { data } = await api.get<{ rates: FundingRateData[] }>("/market/funding-rates");
+  const raw = data.rates ?? [];
+  const rates: FundingRateEntry[] = raw.map((r) => ({
+    symbol: r.symbol,
+    funding_rate: r.funding_rate,
+    next_funding_time: typeof r.next_funding_time === "string"
+      ? new Date(r.next_funding_time).getTime()
+      : (r.next_funding_time as unknown as number),
+  }));
+  return {
+    rates,
+    extreme_longs: rates.filter((r) => r.funding_rate > 0.001),
+    extreme_shorts: rates.filter((r) => r.funding_rate < -0.0005),
+  };
+}
+
 // --- Order Book ---
 
 export interface OrderBookLevel {
@@ -721,6 +752,24 @@ export async function fetchOrderBook(
   return data;
 }
 
+// --- Symbols ---
+
+export interface SymbolOption {
+  label: string;  // e.g. "BTC/USDT"
+  value: string;  // e.g. "BTCUSDT"
+}
+
+export interface AllSymbolsResponse {
+  crypto: SymbolOption[];
+  forex: SymbolOption[];
+  total: number;
+}
+
+export async function fetchAllSymbols(): Promise<AllSymbolsResponse> {
+  const { data } = await api.get<AllSymbolsResponse>("/market/symbols");
+  return data;
+}
+
 // --- System ---
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {
@@ -730,5 +779,547 @@ export async function fetchSystemStatus(): Promise<SystemStatus> {
 
 export async function fetchHealth(): Promise<{ status: string }> {
   const { data } = await api.get<{ status: string }>("/health");
+  return data;
+}
+
+// --- Simulation (Paper Trading) ---
+
+export interface SimulatedPosition {
+  id: string;
+  symbol: string;
+  direction: "LONG" | "SHORT";
+  strategy: string;
+  regime: string;
+  confidence: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit_1: number;
+  take_profit_2: number | null;
+  take_profit_3: number | null;
+  current_price: number;
+  exit_price: number | null;
+  pnl_pct: number;
+  status: string;
+  exit_reason: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  mae_pct: number | null;
+  mfe_pct: number | null;
+  tags: string[] | null;
+  notes: string | null;
+}
+
+// --- Trade Journal ---
+
+export interface UpdatePositionNotesRequest {
+  tags?: string[];
+  notes?: string;
+}
+
+export const updatePositionNotes = (
+  positionId: number,
+  data: UpdatePositionNotesRequest,
+): Promise<void> =>
+  fetch(`/api/v1/simulation/positions/${positionId}/notes`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((r) => {
+    if (!r.ok) throw new Error("Failed to update notes");
+  });
+
+export interface SimulationPerformance {
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  total_pnl_pct: number;
+  avg_win_pct: number;
+  avg_loss_pct: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  sharpe_ratio: number;
+  best_trade: number;
+  worst_trade: number;
+  open_positions: number;
+  running_pnl: number;
+}
+
+export interface SimulationStatus {
+  is_running: boolean;
+  session_id: string;
+  open_positions: number;
+  max_positions: number;
+  performance: SimulationPerformance;
+}
+
+export interface BotSession {
+  id: string;
+  started_at: string | null;
+  ended_at: string | null;
+  is_active: boolean;
+  total_trades: number;
+  winning_trades: number;
+  total_pnl_pct: number;
+  max_drawdown_pct: number;
+  sharpe_ratio: number | null;
+  win_rate: number;
+}
+
+export async function fetchSimulationStatus(): Promise<SimulationStatus> {
+  const { data } = await api.get<SimulationStatus>("/simulation/status");
+  return data;
+}
+
+export async function fetchOpenPositions(): Promise<{
+  positions: SimulatedPosition[];
+  count: number;
+  session_id: string;
+  is_running: boolean;
+}> {
+  const { data } = await api.get("/simulation/positions");
+  return data;
+}
+
+export async function fetchClosedPositions(params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<{ positions: SimulatedPosition[]; total: number; limit: number; offset: number }> {
+  const { data } = await api.get("/simulation/positions/closed", { params });
+  return data;
+}
+
+export async function fetchSimulationPerformance(): Promise<SimulationPerformance> {
+  const { data } = await api.get<SimulationPerformance>("/simulation/performance");
+  return data;
+}
+
+export async function fetchSessionHistory(limit: number = 10): Promise<{ sessions: BotSession[] }> {
+  const { data } = await api.get("/simulation/performance/history", { params: { limit } });
+  return data;
+}
+
+export async function startSimulation(): Promise<{ status: string; session_id: string }> {
+  const { data } = await api.post("/simulation/start");
+  return data;
+}
+
+export async function stopSimulation(): Promise<{ status: string }> {
+  const { data } = await api.post("/simulation/stop");
+  return data;
+}
+
+// --- Notification History ---
+
+export interface NotificationRecord {
+  id: string;
+  chat_id: string;
+  message_type: string;
+  asset: string | null;
+  direction: string | null;
+  confidence: number | null;
+  strategy: string | null;
+  entry_price: number | null;
+  stop_loss: number | null;
+  take_profit_1: number | null;
+  outcome: string | null;
+  pnl_pct: number | null;
+  message_text: string;
+  sent_at: string | null;
+}
+
+export interface NotificationPerformance {
+  total_signals: number;
+  win_rate: number;
+  breakdown: Record<string, { count: number; avg_pnl: number }>;
+}
+
+export async function fetchNotificationHistory(params?: {
+  limit?: number;
+  offset?: number;
+  chat_id?: string;
+  message_type?: string;
+}): Promise<{ notifications: NotificationRecord[]; total: number; limit: number; offset: number }> {
+  const { data } = await api.get("/notifications/history", { params });
+  return data;
+}
+
+export async function fetchNotificationPerformance(): Promise<NotificationPerformance> {
+  const { data } = await api.get<NotificationPerformance>("/notifications/performance");
+  return data;
+}
+
+// --- Signal Markers ---
+
+export interface SignalMarker {
+  time: number;
+  direction: "LONG" | "SHORT";
+  price: number;
+  confidence: number;
+  strategy: string;
+  symbol: string;
+}
+
+export async function fetchSignalMarkersForSymbol(
+  symbol: string,
+  limit = 50,
+): Promise<{ signals: SignalMarker[] }> {
+  const { data } = await api.get<{ signals: SignalMarker[] }>(
+    `/signals/history?symbol=${symbol}&limit=${limit}`,
+  );
+  return data;
+}
+
+// --- Equity Curve ---
+
+export interface EquityPoint {
+  time: string;
+  equity: number;
+  pnl_pct: number;
+  trade_count: number;
+}
+
+export interface EquityCurveData {
+  equity_curve: EquityPoint[];
+  session_id: string | null;
+  is_running: boolean;
+}
+
+export async function fetchEquityCurve(): Promise<EquityCurveData> {
+  const { data } = await api.get<EquityCurveData>("/simulation/equity-curve");
+  return data;
+}
+
+// --- Fear & Greed ---
+
+export interface FearGreedData {
+  value: number;
+  value_classification: string;
+  timestamp: string;
+  cached_at: string;
+  error?: string;
+}
+
+export async function fetchFearGreed(): Promise<FearGreedData> {
+  const { data } = await api.get<FearGreedData>("/market/fear-greed");
+  return data;
+}
+
+// --- Strategy Heatmap ---
+
+export interface HeatmapCell {
+  strategy: string;
+  regime: string;
+  win_rate: number;
+  total_trades: number;
+  wins: number;
+}
+
+export interface StrategyHeatmapData {
+  heatmap: HeatmapCell[];
+  strategies: string[];
+  regimes: string[];
+  total_positions: number;
+}
+
+export async function fetchStrategyHeatmap(): Promise<StrategyHeatmapData> {
+  const { data } = await api.get<StrategyHeatmapData>("/simulation/strategy-heatmap");
+  return data;
+}
+
+// --- Attribution ---
+
+export interface AttributionEntry {
+  key: string;
+  total_pnl: number;
+  trades: number;
+  win_rate: number;
+}
+
+export interface AttributionData {
+  by_strategy: AttributionEntry[];
+  by_regime: AttributionEntry[];
+  by_symbol: AttributionEntry[];
+  total_closed_trades: number;
+}
+
+export async function fetchAttribution(): Promise<AttributionData> {
+  const { data } = await api.get<AttributionData>("/simulation/attribution");
+  return data;
+}
+
+// --- R-Multiple ---
+
+export interface RMultipleData {
+  distribution: { r: number; count: number }[];
+  avg_r: number;
+  expectancy: number;
+  win_rate: number;
+  avg_win_r: number;
+  avg_loss_r: number;
+  total_trades: number;
+}
+
+export async function fetchRMultiple(): Promise<RMultipleData> {
+  const { data } = await api.get<RMultipleData>("/simulation/r-multiple");
+  return data;
+}
+
+// --- BTC Dominance ---
+
+export interface BtcDominanceData {
+  btc_dominance: number;
+  total_market_cap_usd: number;
+  total_volume_24h_usd: number;
+  market_cap_change_24h_pct: number;
+  active_cryptocurrencies: number;
+  cached_at: string;
+  error?: string;
+}
+
+export async function fetchBtcDominance(): Promise<BtcDominanceData> {
+  const { data } = await api.get<BtcDominanceData>("/market/btc-dominance");
+  return data;
+}
+
+// --- Market Breadth ---
+
+export interface MarketBreadthData {
+  above_ema20_pct: number;
+  above_ema50_pct: number;
+  above_ema200_pct: number;
+  total_symbols: number;
+  scanned_symbols: number;
+  cached_at: string;
+}
+
+export async function fetchMarketBreadth(): Promise<MarketBreadthData> {
+  const { data } = await api.get<MarketBreadthData>("/market/breadth");
+  return data;
+}
+
+// --- Momentum Rankings ---
+
+export interface MomentumEntry {
+  symbol: string;
+  score: number;
+  direction: "LONG" | "SHORT" | "NEUTRAL";
+  tf_scores: Record<string, number>;
+}
+
+export interface MomentumRankData {
+  rankings: MomentumEntry[];
+  count: number;
+}
+
+export async function fetchMomentumRank(topN: number = 20): Promise<MomentumRankData> {
+  const { data } = await api.get<MomentumRankData>("/market/momentum-rank", {
+    params: { top_n: topN },
+  });
+  return data;
+}
+
+// --- Signal History ---
+
+export interface SignalHistoryEntry {
+  id: string;
+  asset: string;
+  direction: string;
+  confidence: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit_1: number;
+  strategy_name: string;
+  status: string;
+  created_at: string;
+}
+
+export interface SignalHistoryResponse {
+  data: SignalHistoryEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function fetchSignalHistory(params?: {
+  asset?: string;
+  direction?: string;
+  strategy?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SignalHistoryResponse> {
+  const { data } = await api.get<SignalHistoryResponse>("/signals", { params: { ...params, limit: params?.limit ?? 50 } });
+  return data;
+}
+
+// --- Trade Duration Distribution ---
+
+export interface TradeDurationData {
+  buckets: string[];
+  by_strategy: Record<string, Record<string, number>>;
+}
+
+export async function fetchTradeDuration(): Promise<TradeDurationData> {
+  const { data } = await api.get<TradeDurationData>("/simulation/trade-duration");
+  return data;
+}
+
+// --- Entry Timing Heatmap ---
+
+export interface TimingCell {
+  hour: number;
+  day: number;
+  win_rate: number | null;
+  total_trades: number;
+}
+
+export interface EntryTimingData {
+  matrix: TimingCell[];
+  days: string[];
+}
+
+export async function fetchEntryTimingHeatmap(): Promise<EntryTimingData> {
+  const { data } = await api.get<EntryTimingData>("/simulation/entry-timing-heatmap");
+  return data;
+}
+
+// --- Macro Overlay ---
+
+export interface MacroData {
+  dxy_price: number | null;
+  dxy_change_pct: number | null;
+  us10y_yield: number | null;
+  us10y_change_pct: number | null;
+  spx_price: number | null;
+  spx_change_pct: number | null;
+  btc_correlation_dxy: number | null;
+  last_updated: number;
+}
+
+export async function fetchMacroData(): Promise<MacroData> {
+  const { data } = await api.get<MacroData>("/market/macro");
+  return data;
+}
+
+// --- Sector Momentum ---
+
+export interface SectorMomentumEntry {
+  sector: string;
+  momentum_score: number;
+  avg_1d_change: number;
+  avg_7d_change: number;
+  top_performers: string[];
+  symbol_count: number;
+}
+
+export interface SectorMomentumData {
+  sectors: SectorMomentumEntry[];
+}
+
+export async function fetchSectorMomentum(): Promise<SectorMomentumData> {
+  const { data } = await api.get<SectorMomentumData>("/market/sector-momentum");
+  return data;
+}
+
+// --- Long/Short Ratio ---
+
+export interface LongShortRatioPoint {
+  timestamp: number;
+  long_short_ratio: number;
+  long_account: number;
+  short_account: number;
+}
+
+export interface LongShortData {
+  symbol: string;
+  data: LongShortRatioPoint[];
+  current_ratio: number;
+  sentiment: "extreme_long" | "long" | "neutral" | "short" | "extreme_short";
+}
+
+export async function fetchLongShortRatio(symbol: string): Promise<LongShortData> {
+  const { data } = await api.get<{
+    symbol: string;
+    data: LongShortRatioPoint[];
+    extreme_long: boolean;
+    extreme_short: boolean;
+  }>(`/market/long-short-ratio/${symbol}`);
+
+  const latest = data.data[data.data.length - 1];
+  const ratio = latest?.long_short_ratio ?? 1;
+  const longPct = (latest?.long_account ?? 0.5) * 100;
+
+  let sentiment: LongShortData["sentiment"] = "neutral";
+  if (data.extreme_long || longPct > 75) sentiment = "extreme_long";
+  else if (longPct > 60) sentiment = "long";
+  else if (data.extreme_short || longPct < 25) sentiment = "extreme_short";
+  else if (longPct < 40) sentiment = "short";
+
+  return {
+    symbol: data.symbol,
+    data: data.data,
+    current_ratio: ratio,
+    sentiment,
+  };
+}
+
+// --- News Velocity ---
+
+export interface NewsVelocityEntry {
+  symbol: string;
+  count: number;
+}
+
+export interface NewsVelocityData {
+  velocity: NewsVelocityEntry[];
+  total_articles: number;
+}
+
+export async function fetchNewsVelocity(): Promise<NewsVelocityData> {
+  const { data } = await api.get<NewsVelocityData>("/market/news-velocity");
+  return data;
+}
+
+// --- Monte Carlo VaR ---
+
+export interface MonteCarloVarData {
+  var_95: number;
+  var_99: number;
+  expected_return: number;
+  worst_case: number;
+  best_case: number;
+  median: number;
+  simulations: number;
+  horizon: number;
+  confidence?: number;
+  error?: string;
+}
+
+export const fetchMonteCarloVar = (
+  simulations = 1000,
+  horizon = 20,
+): Promise<MonteCarloVarData> =>
+  api
+    .get<MonteCarloVarData>("/simulation/monte-carlo-var", {
+      params: { simulations, horizon },
+    })
+    .then((r) => r.data);
+
+// --- Stablecoin Supply Ratio ---
+
+export interface StablecoinRatioData {
+  ssr: number;
+  usdt_market_cap: number;
+  usdc_market_cap: number;
+  stable_total: number;
+  total_market_cap: number;
+  signal: "bullish" | "neutral_bullish" | "neutral" | "bearish" | "unknown";
+  interpretation: string;
+  cached_at: string;
+  error?: string;
+}
+
+export async function fetchStablecoinRatio(): Promise<StablecoinRatioData> {
+  const { data } = await api.get<StablecoinRatioData>("/market/stablecoin-ratio");
   return data;
 }

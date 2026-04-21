@@ -603,7 +603,7 @@ class TradingAgent:
                 bias, entry = "SHORT", round(rl, 2)
                 sl = round(rh + atr, 2)
             conditions = [
-                ("Tight range", (rh - rl) / atr < 2),
+                ("Tight range", (rh - rl) / atr < 2 if atr > 0 else False),
                 ("Volume>2x", vol_ratio > 2),
                 ("Breakout", close > rh or close < rl),
             ]

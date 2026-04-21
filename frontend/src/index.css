@@ -28,6 +28,19 @@
   --color-muted: #656d76;
 }
 
+/* Terminal theme — green-on-black Matrix style */
+[data-theme="terminal"] {
+  --color-background: #080808;
+  --color-surface: #0f0f0f;
+  --color-border: #1a3d1a;
+  --color-accent: #00ff00;
+  --color-bullish: #00ff41;
+  --color-bearish: #ff4444;
+  --color-warning: #ffcc00;
+  --color-foreground: #00ff00;
+  --color-muted: #3d7a3d;
+}
+
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
