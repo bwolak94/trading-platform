@@ -1323,3 +1323,58 @@ export async function fetchStablecoinRatio(): Promise<StablecoinRatioData> {
   const { data } = await api.get<StablecoinRatioData>("/market/stablecoin-ratio");
   return data;
 }
+
+// --- Open Interest & Positioning ---
+
+export interface OIHistoryPoint {
+  timestamp: number;
+  open_interest: number;
+  open_interest_value: number;
+}
+
+export interface PositioningSnapshot {
+  symbol: string;
+  period: string;
+  current_price: number;
+  current_oi: number;
+  current_oi_value: number;
+  oi_change_24h_pct: number;
+  global_ls_ratio: number;
+  top_trader_ratio: number;
+  funding_rate: number;
+  oi_history: OIHistoryPoint[];
+  ls_history: LongShortRatioPoint[];
+  top_trader_history: LongShortRatioPoint[];
+  liquidation_levels: LiquidationLevel[];
+}
+
+export interface TopTraderRatioData {
+  symbol: string;
+  position_ratio: LongShortRatioPoint[];
+  account_ratio: LongShortRatioPoint[];
+  current_position_ratio: number;
+  current_account_ratio: number;
+  longs_dominant: boolean;
+}
+
+export async function fetchPositioningSnapshot(
+  symbol: string,
+  period = "1h",
+  limit = 100,
+): Promise<PositioningSnapshot> {
+  const { data } = await api.get<PositioningSnapshot>(`/market/positioning/${symbol}`, {
+    params: { period, limit },
+  });
+  return data;
+}
+
+export async function fetchTopTraderRatio(
+  symbol: string,
+  period = "1h",
+  limit = 50,
+): Promise<TopTraderRatioData> {
+  const { data } = await api.get<TopTraderRatioData>(`/market/top-trader-ratio/${symbol}`, {
+    params: { period, limit },
+  });
+  return data;
+}

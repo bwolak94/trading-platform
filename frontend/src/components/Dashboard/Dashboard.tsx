@@ -49,6 +49,7 @@ import { MarketSentimentPanel } from "./MarketSentimentPanel";
 import { SectorMomentumPanel } from "./SectorMomentumPanel";
 import { SessionClock } from "../ui/SessionClock";
 import { SettingsPanel } from "./SettingsPanel";
+import { OpenInterestPanel } from "./OpenInterestPanel";
 import { useTheme } from "../hooks/useTheme";
 import { usePanelOrder } from "../hooks/usePanelOrder";
 import type { PanelId } from "../hooks/usePanelOrder";
@@ -120,6 +121,7 @@ export function Dashboard() {
     settings, setSettings,
     systemPaused, setSystemPaused,
     drawdownPct, setDrawdownPct,
+    activeMainTab, setActiveMainTab,
   } = useAppStore();
 
   // Theme management (applies data-theme attribute to document root)
@@ -317,6 +319,36 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Main tab navigation */}
+      <div className="flex border-b border-border" role="tablist" aria-label="Main navigation tabs">
+        {(["dashboard", "positioning"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeMainTab === tab}
+            onClick={() => setActiveMainTab(tab)}
+            className={`min-h-[44px] px-6 py-2 text-sm font-medium transition-colors ${
+              activeMainTab === tab
+                ? "border-b-2 border-accent text-white"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab === "dashboard" ? "Dashboard" : "Open Interest"}
+          </button>
+        ))}
+      </div>
+
+      {/* Positioning tab */}
+      {activeMainTab === "positioning" && (
+        <SectionErrorBoundary sectionName="Positioning">
+          <OpenInterestPanel defaultSymbol={chartAsset} />
+        </SectionErrorBoundary>
+      )}
+
+      {/* Dashboard tab content */}
+      {activeMainTab === "dashboard" && <>
 
       {/* Chart + Side Panel */}
       <SectionErrorBoundary sectionName="Chart">
@@ -530,6 +562,9 @@ export function Dashboard() {
           </div>
         </SectionErrorBoundary>
       </div>
+
+      {/* End of dashboard tab */}
+      </>}
 
       {/* Command Palette — global Cmd+K / Ctrl+K shortcut */}
       <CommandPalette

@@ -29,6 +29,10 @@ interface AppState {
   setSelectedTimeframe: (timeframe: string) => void;
   enabledIndicators: string[];
   setEnabledIndicators: (indicators: string[]) => void;
+
+  // Main tab navigation (persisted)
+  activeMainTab: "dashboard" | "positioning";
+  setActiveMainTab: (tab: "dashboard" | "positioning") => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -59,6 +63,9 @@ export const useAppStore = create<AppState>()(
       enabledIndicators: [],
       setEnabledIndicators: (indicators) =>
         set({ enabledIndicators: indicators }),
+
+      activeMainTab: "dashboard",
+      setActiveMainTab: (tab) => set({ activeMainTab: tab }),
     }),
     {
       name: "trading-platform-store",
@@ -66,6 +73,7 @@ export const useAppStore = create<AppState>()(
         selectedAsset: state.selectedAsset,
         selectedTimeframe: state.selectedTimeframe,
         enabledIndicators: state.enabledIndicators,
+        activeMainTab: state.activeMainTab,
       }),
     }
   )

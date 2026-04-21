@@ -1033,6 +1033,137 @@ async def get_open_interest_endpoint(
     return {"symbol": symbol.upper(), "data": data, "count": len(data)}
 
 
+@router.get("/top-trader-ratio/{symbol}")
+async def get_top_trader_ratio_endpoint(
+    symbol: str,
+    period: str = Query(default="1h"),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    """Get top 20% traders long/short position and account ratios for a futures symbol."""
+    import asyncio
+    from app.data.fetchers.binance_fetcher import (
+        get_top_trader_position_ratio,
+        get_top_trader_account_ratio,
+    )
+
+    sym = symbol.upper()
+    position_ratio, account_ratio = await asyncio.gather(
+        get_top_trader_position_ratio(sym, period=period, limit=limit),
+        get_top_trader_account_ratio(sym, period=period, limit=limit),
+    )
+
+    current_position_ratio = position_ratio[-1]["long_short_ratio"] if position_ratio else 1.0
+    current_account_ratio = account_ratio[-1]["long_short_ratio"] if account_ratio else 1.0
+
+    return {
+        "symbol": sym,
+        "position_ratio": position_ratio,
+        "account_ratio": account_ratio,
+        "current_position_ratio": current_position_ratio,
+        "current_account_ratio": current_account_ratio,
+        "longs_dominant": current_position_ratio > 1.0,
+    }
+
+
+@router.get("/positioning/{symbol}")
+async def get_positioning_snapshot(
+    symbol: str,
+    period: str = Query(default="1h"),
+    limit: int = Query(default=100, ge=10, le=500),
+) -> dict:
+    """Combined positioning snapshot: OI history, global L/S ratio, top trader ratio, price, funding, liquidation levels."""
+    import asyncio
+    from app.data.fetchers.binance_fetcher import (
+        get_open_interest_history,
+        get_long_short_ratio,
+        get_top_trader_position_ratio,
+        _get_client,
+        FUTURES_REST_URL,
+    )
+
+    sym = symbol.upper()
+
+    # Fan out all data fetches concurrently
+    results = await asyncio.gather(
+        get_open_interest_history(sym, period=period, limit=limit),
+        get_long_short_ratio(sym, period=period, limit=limit),
+        get_top_trader_position_ratio(sym, period=period, limit=limit),
+        return_exceptions=True,
+    )
+
+    oi_history: list[dict] = results[0] if not isinstance(results[0], Exception) else []
+    ls_history: list[dict] = results[1] if not isinstance(results[1], Exception) else []
+    top_trader_history: list[dict] = results[2] if not isinstance(results[2], Exception) else []
+
+    # Spot price from Binance Futures
+    current_price = 0.0
+    try:
+        client = _get_client()
+        price_resp = await client.get(
+            f"{FUTURES_REST_URL}/fapi/v1/ticker/price",
+            params={"symbol": sym},
+        )
+        price_resp.raise_for_status()
+        current_price = float(price_resp.json()["price"])
+    except Exception:
+        pass
+
+    # Current OI and 24h change
+    current_oi = float(oi_history[-1]["open_interest"]) if oi_history else 0.0
+    current_oi_value = float(oi_history[-1]["open_interest_value"]) if oi_history else 0.0
+    oi_change_24h_pct = 0.0
+    if len(oi_history) >= 2:
+        oldest = float(oi_history[0]["open_interest_value"])
+        if oldest > 0:
+            oi_change_24h_pct = round((current_oi_value - oldest) / oldest * 100, 2)
+
+    # Current L/S ratios
+    global_ls_ratio = float(ls_history[-1]["long_short_ratio"]) if ls_history else 1.0
+    top_trader_ratio = float(top_trader_history[-1]["long_short_ratio"]) if top_trader_history else 1.0
+
+    # Funding rate
+    funding_rate = 0.0
+    try:
+        from app.data.fetchers.funding_rate_fetcher import FundingRateFetcher
+        fetcher = FundingRateFetcher()
+        rates = await fetcher.fetch_funding_rates(symbols=[sym])
+        if rates:
+            funding_rate = rates[0].get("funding_rate", 0.0)
+    except Exception:
+        pass
+
+    # Liquidation levels (top 6)
+    liquidation_levels: list[dict] = []
+    try:
+        from app.data.fetchers.liquidation_engine import get_liquidation_manager
+        manager = get_liquidation_manager()
+        engine = manager.engine
+        if engine is not None:
+            heatmap = engine.get_heatmap_data(symbol=sym, price_range_pct=5.0)
+            levels = heatmap.get("levels", [])
+            liquidation_levels = sorted(
+                levels, key=lambda x: x.get("intensity", 0), reverse=True
+            )[:6]
+    except Exception:
+        pass
+
+    return {
+        "symbol": sym,
+        "period": period,
+        "current_price": current_price,
+        "current_oi": current_oi,
+        "current_oi_value": current_oi_value,
+        "oi_change_24h_pct": oi_change_24h_pct,
+        "global_ls_ratio": global_ls_ratio,
+        "top_trader_ratio": top_trader_ratio,
+        "funding_rate": funding_rate,
+        "oi_history": oi_history,
+        "ls_history": ls_history,
+        "top_trader_history": top_trader_history,
+        "liquidation_levels": liquidation_levels,
+    }
+
+
 @router.get("/sector-momentum")
 async def get_sector_momentum_endpoint() -> dict:
     """Get momentum scores for each crypto sector (cached 10 min).

@@ -417,6 +417,105 @@ async def get_taker_buysell_ratio(symbol: str, period: str = "1h", limit: int = 
         return []
 
 
+async def get_top_trader_position_ratio(
+    symbol: str, period: str = "1h", limit: int = 50
+) -> list[dict]:
+    """Top 20% traders long/short position count ratio.
+
+    Endpoint: GET fapi.binance.com/futures/data/topLongShortPositionRatio
+
+    Args:
+        symbol: e.g. "BTCUSDT"
+        period: "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"
+        limit: Number of data points (max 500)
+
+    Returns:
+        List of {timestamp, long_short_ratio, long_account, short_account} dicts.
+        Returns [] for illiquid symbols that Binance returns 400 for.
+    """
+    if not _check_circuit_breaker():
+        return []
+    client = _get_client()
+    try:
+        resp = await client.get(
+            f"{FUTURES_REST_URL}/futures/data/topLongShortPositionRatio",
+            params={"symbol": symbol, "period": period, "limit": limit},
+        )
+        resp.raise_for_status()
+        _record_success()
+        data = resp.json()
+        return [
+            {
+                "timestamp": int(item["timestamp"]),
+                "long_short_ratio": float(item["longShortRatio"]),
+                "long_account": float(item["longAccount"]),
+                "short_account": float(item["shortAccount"]),
+            }
+            for item in data
+        ]
+    except httpx.HTTPStatusError as exc:
+        # Binance returns 400 for illiquid symbols — not a circuit-breaker event
+        if exc.response.status_code == 400:
+            logger.debug("Top trader position ratio unavailable for %s (400)", symbol)
+            return []
+        _record_failure()
+        logger.warning("Top trader position ratio fetch failed for %s: %s", symbol, exc)
+        return []
+    except httpx.RequestError as exc:
+        _record_failure()
+        logger.warning("Top trader position ratio request error for %s: %s", symbol, exc)
+        return []
+
+
+async def get_top_trader_account_ratio(
+    symbol: str, period: str = "1h", limit: int = 50
+) -> list[dict]:
+    """Top 20% traders long/short account count ratio.
+
+    Endpoint: GET fapi.binance.com/futures/data/topLongShortAccountRatio
+
+    Args:
+        symbol: e.g. "BTCUSDT"
+        period: "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"
+        limit: Number of data points (max 500)
+
+    Returns:
+        List of {timestamp, long_short_ratio, long_account, short_account} dicts.
+        Returns [] for illiquid symbols that Binance returns 400 for.
+    """
+    if not _check_circuit_breaker():
+        return []
+    client = _get_client()
+    try:
+        resp = await client.get(
+            f"{FUTURES_REST_URL}/futures/data/topLongShortAccountRatio",
+            params={"symbol": symbol, "period": period, "limit": limit},
+        )
+        resp.raise_for_status()
+        _record_success()
+        data = resp.json()
+        return [
+            {
+                "timestamp": int(item["timestamp"]),
+                "long_short_ratio": float(item["longShortRatio"]),
+                "long_account": float(item["longAccount"]),
+                "short_account": float(item["shortAccount"]),
+            }
+            for item in data
+        ]
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 400:
+            logger.debug("Top trader account ratio unavailable for %s (400)", symbol)
+            return []
+        _record_failure()
+        logger.warning("Top trader account ratio fetch failed for %s: %s", symbol, exc)
+        return []
+    except httpx.RequestError as exc:
+        _record_failure()
+        logger.warning("Top trader account ratio request error for %s: %s", symbol, exc)
+        return []
+
+
 async def get_open_interest_history(symbol: str, period: str = "1h", limit: int = 50) -> list[dict]:
     """Fetch open interest history for a futures symbol.
 
