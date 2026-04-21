@@ -14,7 +14,7 @@ Cached for 15 minutes to avoid excessive API calls.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.logging import get_logger
@@ -107,12 +107,17 @@ async def _tf_momentum_score(symbol: str, interval: str) -> float | None:
     """
     from app.data.fetchers.binance_fetcher import BinanceFetcher
 
-    fetcher = BinanceFetcher(symbol=symbol, interval=interval)
-    candles = await fetcher.fetch_historical_ohlcv(limit=50)
+    fetcher = BinanceFetcher()
+    end_time = datetime.now(timezone.utc)
+    days_needed = {"1h": 5, "4h": 15, "1d": 60}.get(interval, 30)
+    start_time = end_time - timedelta(days=days_needed)
+    candles = await fetcher.fetch_historical_ohlcv(
+        symbol=symbol, interval=interval, start_time=start_time, end_time=end_time, limit=50
+    )
     if not candles or len(candles) < 25:
         return None
 
-    closes = [float(c["close"]) for c in candles]
+    closes = [float(c.close) for c in candles]
     current = closes[-1]
 
     # EMA20

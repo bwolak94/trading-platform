@@ -10,7 +10,7 @@ Cached for 5 minutes to avoid hammering Binance.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.logging import get_logger
@@ -77,12 +77,16 @@ async def _check_symbol_ema(symbol: str) -> dict[str, bool] | None:
     try:
         from app.data.fetchers.binance_fetcher import BinanceFetcher
 
-        fetcher = BinanceFetcher(symbol=symbol, interval="1d")
-        candles = await fetcher.fetch_historical_ohlcv(limit=205)
+        fetcher = BinanceFetcher()
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=210)
+        candles = await fetcher.fetch_historical_ohlcv(
+            symbol=symbol, interval="1d", start_time=start_time, end_time=end_time, limit=500
+        )
         if not candles or len(candles) < 55:
             return None
 
-        closes = [float(c["close"]) for c in candles]
+        closes = [float(c.close) for c in candles]
         current = closes[-1]
 
         return {
