@@ -9,12 +9,21 @@
  *   B           → Set LONG / Buy bias
  *   S           → Set SHORT / Sell bias
  *   R           → Refresh data
+ *   N           → Next signal
+ *   P           → Previous signal
+ *   E           → Explain focused signal (XAI)
+ *   J           → Open trade journal
+ *   T           → Toggle theme
+ *   Tab         → Toggle sidebar
+ *   ?           → Show shortcuts help
  *
  * Usage:
  *   useHotkeys({
  *     onTimeframeChange: (tf) => setTf(tf),
  *     onFullscreen: () => toggleFullscreen(),
  *     onRefresh: () => queryClient.invalidateQueries(),
+ *     onNextSignal: () => goToNextSignal(),
+ *     onPrevSignal: () => goToPrevSignal(),
  *   });
  */
 
@@ -29,12 +38,26 @@ const TIMEFRAME_MAP: Record<string, string> = {
   "6": "1d",
 };
 
-interface HotkeyHandlers {
+export interface HotkeyHandlers {
   onTimeframeChange?: (tf: string) => void;
   onFullscreen?: () => void;
   onRefresh?: () => void;
   onLongBias?: () => void;
   onShortBias?: () => void;
+  /** N key — navigate to next signal in the list */
+  onNextSignal?: () => void;
+  /** P key — navigate to previous signal in the list */
+  onPrevSignal?: () => void;
+  /** E key — trigger XAI explanation for the currently focused signal */
+  onExplainSignal?: () => void;
+  /** J key — open the trade journal panel/page */
+  onOpenJournal?: () => void;
+  /** T key — toggle between dark / light / terminal themes */
+  onToggleTheme?: () => void;
+  /** Tab key — toggle the sidebar panel visibility */
+  onToggleSidebar?: () => void;
+  /** ? key — show the keyboard shortcuts help overlay */
+  onShowHelp?: () => void;
   enabled?: boolean;
 }
 
@@ -44,6 +67,13 @@ export function useHotkeys({
   onRefresh,
   onLongBias,
   onShortBias,
+  onNextSignal,
+  onPrevSignal,
+  onExplainSignal,
+  onOpenJournal,
+  onToggleTheme,
+  onToggleSidebar,
+  onShowHelp,
   enabled = true,
 }: HotkeyHandlers): void {
   useEffect(() => {
@@ -60,7 +90,7 @@ export function useHotkeys({
         return;
       }
 
-      // Skip Cmd/Ctrl combinations (reserved for browser/OS shortcuts)
+      // Skip Cmd/Ctrl/Alt combinations (reserved for browser/OS shortcuts)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key;
@@ -69,6 +99,20 @@ export function useHotkeys({
       if (TIMEFRAME_MAP[key]) {
         e.preventDefault();
         onTimeframeChange?.(TIMEFRAME_MAP[key]);
+        return;
+      }
+
+      // Tab key — toggle sidebar (must check before lower() to avoid collision)
+      if (key === "Tab") {
+        e.preventDefault();
+        onToggleSidebar?.();
+        return;
+      }
+
+      // ? key — show help (Shift+/ on most keyboards sends "?")
+      if (key === "?") {
+        e.preventDefault();
+        onShowHelp?.();
         return;
       }
 
@@ -94,10 +138,44 @@ export function useHotkeys({
           e.preventDefault();
           onShortBias?.();
           break;
+        case "n":
+          e.preventDefault();
+          onNextSignal?.();
+          break;
+        case "p":
+          e.preventDefault();
+          onPrevSignal?.();
+          break;
+        case "e":
+          e.preventDefault();
+          onExplainSignal?.();
+          break;
+        case "j":
+          e.preventDefault();
+          onOpenJournal?.();
+          break;
+        case "t":
+          e.preventDefault();
+          onToggleTheme?.();
+          break;
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, onTimeframeChange, onFullscreen, onRefresh, onLongBias, onShortBias]);
+  }, [
+    enabled,
+    onTimeframeChange,
+    onFullscreen,
+    onRefresh,
+    onLongBias,
+    onShortBias,
+    onNextSignal,
+    onPrevSignal,
+    onExplainSignal,
+    onOpenJournal,
+    onToggleTheme,
+    onToggleSidebar,
+    onShowHelp,
+  ]);
 }

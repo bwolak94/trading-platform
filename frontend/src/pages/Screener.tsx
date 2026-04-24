@@ -92,8 +92,8 @@ export function ScreenerPage() {
 
     const signalsByAsset = new Map<string, { count: number; lastDirection: string }>();
 
-    if (signalsData?.items) {
-      for (const signal of signalsData.items) {
+    if (signalsData?.data) {
+      for (const signal of signalsData.data) {
         const existing = signalsByAsset.get(signal.asset);
         if (existing) {
           existing.count += 1;

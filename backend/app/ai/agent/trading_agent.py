@@ -227,6 +227,7 @@ class TradingAgent:
             if result and result.confidence >= MIN_CONFIDENCE:
                 self._active_signals[symbol] = result
                 self._signal_history.append(result.to_dict())
+                await self._persist_signal(result)
                 logger.info(
                     "NEW SIGNAL: %s %s @ $%s (conf=%s%%, strategy=%s)",
                     symbol, result.action, result.entry,
@@ -320,6 +321,32 @@ class TradingAgent:
                     signal.stop_loss = round(new_sl, 8)
 
         return None
+
+    async def _persist_signal(self, signal: "TradeSignal") -> None:
+        """Persist a new trading signal to the database for chart overlay and history."""
+        try:
+            from datetime import timezone
+            from app.core.database import async_session
+            from app.models.signal import Signal as SignalModel
+
+            tp_levels = signal.tp_levels if hasattr(signal, "tp_levels") else []
+            async with async_session() as session:
+                row = SignalModel(
+                    asset=signal.symbol.replace("/", "").upper(),
+                    direction=signal.action,
+                    confidence=signal.confidence,
+                    regime=signal.regime if hasattr(signal, "regime") else "UNKNOWN",
+                    entry_price=signal.entry,
+                    stop_loss=signal.sl if hasattr(signal, "sl") else None,
+                    take_profit_1=tp_levels[0] if len(tp_levels) > 0 else None,
+                    take_profit_2=tp_levels[1] if len(tp_levels) > 1 else None,
+                    factors=signal.conditions if hasattr(signal, "conditions") else [],
+                    status="ACTIVE",
+                )
+                session.add(row)
+                await session.commit()
+        except Exception as exc:
+            logger.debug("Failed to persist signal to DB: %s", exc)
 
     def _close_trade(self, symbol: str, exit_price: float, hit_level: str) -> None:
         """Close a trade, calculate reward, record lesson, remove from active."""

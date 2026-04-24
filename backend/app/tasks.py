@@ -45,6 +45,10 @@ celery_app.conf.update(
             "task": "app.tasks.check_signal_status",
             "schedule": 900.0,  # every 15 minutes
         },
+        "cleanup-expired-signals": {
+            "task": "cleanup_expired_signals",
+            "schedule": 86400.0,  # daily (every 24 hours)
+        },
     },
 )
 
@@ -619,3 +623,54 @@ async def _run_backtest(
             strategy_name, asset, timeframe,
             bt_result.metrics.win_rate, bt_result.metrics.max_drawdown,
         )
+
+
+@celery_app.task(name="cleanup_expired_signals")
+def cleanup_expired_signals() -> dict:
+    """Archive signals older than 30 days by marking their status as 'ARCHIVED'.
+
+    Targets only signals that are already in a terminal state (EXPIRED, CLOSED,
+    CANCELLED) and were created more than 30 days ago.  Uses a synchronous
+    SQLAlchemy session since Celery tasks run in a regular (non-async) context.
+
+    Returns:
+        Dict with ``archived_count`` indicating how many rows were updated.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import create_engine, update
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.config import settings
+    from app.models.signal import Signal as SignalModel
+
+    # Build a synchronous database URL from the async URL (replace asyncpg driver)
+    sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
+
+    sync_engine = create_engine(sync_db_url, pool_pre_ping=True)
+    SyncSession = sessionmaker(bind=sync_engine, autocommit=False, autoflush=False)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    terminal_statuses = ("EXPIRED", "CLOSED", "CANCELLED")
+
+    archived_count = 0
+    with SyncSession() as session:
+        try:
+            result = session.execute(
+                update(SignalModel)
+                .where(
+                    SignalModel.created_at < cutoff,
+                    SignalModel.status.in_(terminal_statuses),
+                )
+                .values(status="ARCHIVED")
+                .execution_options(synchronize_session="fetch")
+            )
+            session.commit()
+            archived_count = result.rowcount or 0
+        except Exception as exc:
+            session.rollback()
+            logger.error("cleanup_expired_signals failed: %s", exc)
+            raise
+
+    logger.info("cleanup_expired_signals: archived %d signal(s)", archived_count)
+    return {"archived_count": archived_count}

@@ -39,6 +39,69 @@ class SignalResult:
     pyramid_levels: list[dict] = field(default_factory=list)  # [{price: X, size_pct: 25}, ...]
 
 
+def calculate_atr_based_stops(
+    entry_price: float,
+    atr: float,
+    direction: str,
+    atr_multiplier_sl: float = 2.0,
+    atr_multiplier_tp1: float = 2.0,
+    atr_multiplier_tp2: float = 4.0,
+) -> dict[str, float]:
+    """Calculate ATR-based dynamic stop loss and take profit levels.
+
+    Uses the Average True Range (ATR) to set volatility-adaptive risk levels that
+    widen in high-volatility conditions and tighten in low-volatility conditions.
+
+    For LONG trades:
+        stop_loss     = entry - (atr × atr_multiplier_sl)
+        take_profit_1 = entry + (atr × atr_multiplier_tp1)
+        take_profit_2 = entry + (atr × atr_multiplier_tp2)
+
+    For SHORT trades:
+        stop_loss     = entry + (atr × atr_multiplier_sl)
+        take_profit_1 = entry - (atr × atr_multiplier_tp1)
+        take_profit_2 = entry - (atr × atr_multiplier_tp2)
+
+    Args:
+        entry_price: The trade entry price.
+        atr: Average True Range value for the current bar/period.
+        direction: ``"LONG"`` or ``"SHORT"`` (case-insensitive).
+        atr_multiplier_sl: ATR multiplier for the stop loss distance (default 2.0).
+        atr_multiplier_tp1: ATR multiplier for the first take-profit target (default 2.0).
+        atr_multiplier_tp2: ATR multiplier for the second take-profit target (default 4.0).
+
+    Returns:
+        Dict with keys:
+        - ``stop_loss`` (float)
+        - ``take_profit_1`` (float)
+        - ``take_profit_2`` (float)
+        - ``risk_reward`` (float) — ratio of TP1 distance to SL distance, 0 if SL distance is 0.
+    """
+    sl_distance = atr * atr_multiplier_sl
+    tp1_distance = atr * atr_multiplier_tp1
+    tp2_distance = atr * atr_multiplier_tp2
+
+    is_long = direction.upper() == "LONG"
+
+    if is_long:
+        stop_loss = entry_price - sl_distance
+        take_profit_1 = entry_price + tp1_distance
+        take_profit_2 = entry_price + tp2_distance
+    else:
+        stop_loss = entry_price + sl_distance
+        take_profit_1 = entry_price - tp1_distance
+        take_profit_2 = entry_price - tp2_distance
+
+    risk_reward = round(tp1_distance / sl_distance, 2) if sl_distance > 0 else 0.0
+
+    return {
+        "stop_loss": round(stop_loss, 8),
+        "take_profit_1": round(take_profit_1, 8),
+        "take_profit_2": round(take_profit_2, 8),
+        "risk_reward": risk_reward,
+    }
+
+
 class BaseStrategy(ABC):
     """Abstract base class for all trading strategies."""
 
@@ -49,6 +112,32 @@ class BaseStrategy(ABC):
     def is_compatible(self, regime: str) -> bool:
         """Check if this strategy supports the given regime."""
         return regime in self.supported_regimes
+
+    @staticmethod
+    def calculate_atr_based_stops(
+        entry_price: float,
+        atr: float,
+        direction: str,
+        atr_multiplier_sl: float = 2.0,
+        atr_multiplier_tp1: float = 2.0,
+        atr_multiplier_tp2: float = 4.0,
+    ) -> dict[str, float]:
+        """Calculate ATR-based dynamic stop loss and take profit levels.
+
+        Delegates to the module-level ``calculate_atr_based_stops`` function.
+        Provided as a convenience method so strategies can call
+        ``self.calculate_atr_based_stops(...)`` without importing the function directly.
+
+        See ``calculate_atr_based_stops`` for full parameter and return documentation.
+        """
+        return calculate_atr_based_stops(
+            entry_price=entry_price,
+            atr=atr,
+            direction=direction,
+            atr_multiplier_sl=atr_multiplier_sl,
+            atr_multiplier_tp1=atr_multiplier_tp1,
+            atr_multiplier_tp2=atr_multiplier_tp2,
+        )
 
     @abstractmethod
     def generate_signal(

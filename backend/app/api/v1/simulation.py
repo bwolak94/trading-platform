@@ -4,15 +4,43 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.simulation.paper_trading_engine import get_paper_trading_engine
-from app.core.database import async_session
+from app.core.database import async_session, get_db
 from app.core.logging import get_logger
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Hardcoded pairwise correlation matrix for common crypto pairs.
+# Keys are always in canonical order (alphabetically first symbol first).
+# ---------------------------------------------------------------------------
+CRYPTO_CORRELATIONS: dict[tuple[str, str], float] = {
+    ("BTCUSDT", "ETHUSDT"): 0.94,
+    ("BTCUSDT", "SOLUSDT"): 0.88,
+    ("BTCUSDT", "BNBUSDT"): 0.82,
+    ("BTCUSDT", "AVAXUSDT"): 0.85,
+    ("ETHUSDT", "SOLUSDT"): 0.87,
+    ("ETHUSDT", "BNBUSDT"): 0.80,
+    ("ETHUSDT", "AVAXUSDT"): 0.83,
+    ("ETHUSDT", "UNIUSDT"): 0.86,
+    ("BTCUSDT", "XRPUSDT"): 0.72,
+    ("BTCUSDT", "DOGEUSDT"): 0.75,
+}
+
+
+def _lookup_correlation(symbol_a: str, symbol_b: str) -> float | None:
+    """Return the known correlation between two symbols, or None if unknown.
+
+    The lookup is symmetric — order does not matter.
+    """
+    pair = tuple(sorted([symbol_a.upper(), symbol_b.upper()]))
+    return CRYPTO_CORRELATIONS.get(pair)  # type: ignore[arg-type]
 
 
 @router.get("/positions")
@@ -138,6 +166,98 @@ async def stop_simulation() -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Simulation engine is not running")
     await engine.stop()
     return {"status": "stopped"}
+
+
+# ------------------------------------------------------------------ #
+# Enhanced paper trading — manual positions + leverage + funding       #
+# ------------------------------------------------------------------ #
+
+class ManualPositionRequest(BaseModel):
+    symbol: str
+    direction: str
+    entry_price: float
+    stop_loss: float
+    take_profit_1: float
+    take_profit_2: float | None = None
+    take_profit_3: float | None = None
+    strategy: str = "manual"
+    leverage: float = 1.0
+    position_size_usdt: float = 100.0
+
+
+@router.post("/position/manual")
+async def open_manual_position(req: ManualPositionRequest) -> dict[str, Any]:
+    """Open a manual paper trading position with leverage and fee simulation.
+
+    This is the entry point for Option B enhanced paper trading — you control
+    the exact entry, SL, TP, leverage, and position size.
+    """
+    engine = get_paper_trading_engine()
+    try:
+        pos = await engine.open_manual_position(
+            symbol=req.symbol,
+            direction=req.direction,
+            entry_price=req.entry_price,
+            stop_loss=req.stop_loss,
+            take_profit_1=req.take_profit_1,
+            take_profit_2=req.take_profit_2,
+            take_profit_3=req.take_profit_3,
+            strategy=req.strategy,
+            leverage=req.leverage,
+            position_size_usdt=req.position_size_usdt,
+        )
+        return {"status": "opened", "position": pos}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class DefaultsRequest(BaseModel):
+    leverage: float
+    position_size_usdt: float
+
+
+@router.post("/defaults")
+async def set_paper_defaults(req: DefaultsRequest) -> dict[str, Any]:
+    """Update default leverage and position size for auto-scanned positions."""
+    engine = get_paper_trading_engine()
+    engine.set_defaults(req.leverage, req.position_size_usdt)
+    return {
+        "status": "updated",
+        "leverage": req.leverage,
+        "position_size_usdt": req.position_size_usdt,
+    }
+
+
+@router.get("/funding-history")
+async def get_funding_history(limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+    """Return recent funding rate charges applied to leveraged paper positions."""
+    engine = get_paper_trading_engine()
+    return {"history": engine.get_funding_history(limit)}
+
+
+@router.post("/position/{position_id}/close")
+async def close_paper_position(position_id: str) -> dict[str, Any]:
+    """Manually close an open paper trading position at the current price."""
+    import uuid as _uuid
+    engine = get_paper_trading_engine()
+    try:
+        pos_uuid = _uuid.UUID(position_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid position ID")
+
+    pos = engine.position_manager._open_positions.get(pos_uuid)
+    if not pos:
+        raise HTTPException(status_code=404, detail="Position not found or already closed")
+
+    current_price = pos.current_price or pos.entry_price
+    closed = engine.position_manager.close_position(pos_uuid, current_price, "MANUAL_CLOSE")
+    if closed:
+        engine.performance_tracker.record_close(closed)
+        engine.risk_engine.record_trade(closed.pnl_pct)
+        await engine._persist_position_close(closed)
+        await engine._broadcast_position_update(closed, "closed")
+        return {"status": "closed", "position": engine._pos_to_dict(closed)}
+    raise HTTPException(status_code=500, detail="Failed to close position")
 
 
 @router.get("/status")
@@ -553,3 +673,60 @@ async def update_position_notes(
         await db.commit()
 
     return {"status": "ok"}
+
+
+@router.get("/correlation-warning/{symbol}")
+async def check_correlation_warning(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Check if a new signal in ``symbol`` would create high correlation with open positions.
+
+    Queries all currently open simulated positions and cross-references each against
+    the hardcoded ``CRYPTO_CORRELATIONS`` matrix.  Any open position whose pairwise
+    correlation with the requested ``symbol`` exceeds 0.7 is included in the warnings list.
+
+    Args:
+        symbol: The normalised symbol for the prospective new signal (e.g. ``BTCUSDT``).
+        db: Injected async database session.
+
+    Returns:
+        Dict with:
+        - ``warnings``: list of dicts containing ``symbol``, ``correlation`` and ``direction``
+          for each correlated open position.
+        - ``max_correlation``: highest correlation found (0.0 if no open positions).
+        - ``symbol``: the queried symbol (normalised to upper-case).
+    """
+    from app.models.simulated_position import SimulatedPosition
+
+    normalised_symbol = symbol.upper()
+
+    result = await db.execute(
+        select(SimulatedPosition).where(SimulatedPosition.status == "OPEN")
+    )
+    open_positions = result.scalars().all()
+
+    warnings: list[dict[str, Any]] = []
+    for pos in open_positions:
+        pos_symbol = (pos.symbol or "").upper()
+        if pos_symbol == normalised_symbol:
+            # Same symbol — skip self-correlation
+            continue
+
+        correlation = _lookup_correlation(normalised_symbol, pos_symbol)
+        if correlation is not None and correlation > 0.7:
+            warnings.append({
+                "symbol": pos_symbol,
+                "correlation": correlation,
+                "direction": pos.direction or "UNKNOWN",
+            })
+
+    # Sort descending by correlation so the most correlated pair appears first
+    warnings.sort(key=lambda w: w["correlation"], reverse=True)
+    max_correlation = warnings[0]["correlation"] if warnings else 0.0
+
+    return {
+        "symbol": normalised_symbol,
+        "warnings": warnings,
+        "max_correlation": max_correlation,
+    }

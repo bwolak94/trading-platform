@@ -14,6 +14,11 @@ logger = get_logger(__name__)
 PositionStatus = Literal["OPEN", "CLOSED", "STOPPED_OUT", "TP1_HIT", "TP2_HIT", "TP3_HIT"]
 Direction = Literal["LONG", "SHORT"]
 
+# Realistic Binance Futures fee schedule (taker)
+FEE_TAKER_PCT = 0.04   # 0.04% per side
+# Funding rate applied every 8 hours (approximate average)
+FUNDING_RATE_8H = 0.01  # 0.01% per 8h interval (positive = longs pay shorts)
+
 
 @dataclass
 class SimPosition:
@@ -50,6 +55,76 @@ class SimPosition:
     tp1_partial_closed: bool = False   # True after 25% closed at TP1
     tp2_partial_closed: bool = False   # True after another 50% closed at TP2
     realized_pnl_pct: float = 0.0      # cumulative PnL from partial closes (weighted)
+    # --- Option B: Leverage + fees + funding ---
+    leverage: float = 1.0              # position leverage multiplier
+    position_size_usdt: float = 100.0  # notional USD value of position
+    fee_paid_pct: float = 0.0          # total fees charged (entry + exit), as % of notional
+    funding_charged_pct: float = 0.0   # cumulative funding rate charges as % of margin
+    liquidation_price: float = 0.0     # estimated liquidation price
+    last_funding_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        """Calculate liquidation price and apply entry fee after construction."""
+        self._recalculate_liquidation()
+        # Entry fee: taker fee on both sides pre-charged at open
+        entry_fee = FEE_TAKER_PCT * 2  # entry + expected exit fee
+        self.fee_paid_pct += entry_fee
+
+    def _recalculate_liquidation(self) -> None:
+        """Estimate liquidation price based on leverage and margin."""
+        if self.leverage <= 1 or self.entry_price == 0:
+            self.liquidation_price = 0.0
+            return
+        # Simplified: liquidation when unrealized loss = initial margin (1/leverage)
+        # Long: entry * (1 - 1/leverage + maintenance_margin)
+        # Short: entry * (1 + 1/leverage - maintenance_margin)
+        maintenance_margin = 0.004  # 0.4% maintenance margin rate
+        margin_fraction = 1.0 / self.leverage
+        if self.direction == "LONG":
+            self.liquidation_price = round(
+                self.entry_price * (1 - margin_fraction + maintenance_margin), 8
+            )
+        else:
+            self.liquidation_price = round(
+                self.entry_price * (1 + margin_fraction - maintenance_margin), 8
+            )
+
+    def apply_funding_rate(self, funding_rate: float = FUNDING_RATE_8H) -> None:
+        """Charge (or credit) funding rate against the position.
+
+        Longs pay when rate > 0; shorts receive. Rate is expressed as a
+        percentage of the notional (e.g. 0.01 = 0.01%).
+        """
+        if self.direction == "LONG":
+            self.funding_charged_pct += funding_rate
+        else:
+            self.funding_charged_pct -= funding_rate  # shorts receive funding
+
+    @property
+    def leveraged_pnl_pct(self) -> float:
+        """PnL percentage on the *margin* (not notional), after fees and funding."""
+        raw = self.pnl_pct * self.leverage
+        total_costs = self.fee_paid_pct + self.funding_charged_pct
+        return round(raw - total_costs, 4)
+
+    @property
+    def margin_usdt(self) -> float:
+        """Initial margin in USDT."""
+        return round(self.position_size_usdt / self.leverage, 2)
+
+    @property
+    def unrealized_pnl_usdt(self) -> float:
+        """Unrealized PnL in USDT based on leveraged PnL."""
+        return round(self.margin_usdt * self.leveraged_pnl_pct / 100, 2)
+
+    @property
+    def distance_to_liquidation_pct(self) -> float | None:
+        """Distance from current price to liquidation price as % of current price."""
+        if not self.liquidation_price or not self.current_price:
+            return None
+        return round(
+            abs(self.current_price - self.liquidation_price) / self.current_price * 100, 2
+        )
 
     def update_pnl(self, current_price: float) -> None:
         """Recalculate running PnL given the latest price. Updates MAE/MFE."""

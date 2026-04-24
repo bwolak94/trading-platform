@@ -6,7 +6,7 @@ import {
   startAgent,
   stopAgent,
 } from "../../api/client";
-import type { AgentSignal, LearningData } from "../../api/client";
+import type { AgentSignal } from "../../api/client";
 import { DayTradeHUD } from "./DayTradeHUD";
 import { EquityCurve } from "./EquityCurve";
 import { StrategyStats } from "./StrategyStats";
@@ -23,6 +23,145 @@ function formatTime(iso: string): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+// --------------- Alpha Freshness helpers ---------------
+
+/** Returns a Tailwind bar color class based on freshness score 0-100. */
+function getFreshnessBarColor(freshness: number): string {
+  if (freshness >= 75) return "bg-green-500";
+  if (freshness >= 25) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+/** Returns a Tailwind text color class based on freshness score 0-100. */
+function getFreshnessTextColor(freshness: number): string {
+  if (freshness >= 75) return "text-green-400";
+  if (freshness >= 25) return "text-amber-400";
+  return "text-red-400";
+}
+
+/** Returns a human-readable freshness label. */
+function getFreshnessLabel(freshness: number): string {
+  if (freshness >= 75) return "Fresh";
+  if (freshness >= 25) return "Aging";
+  return "Stale";
+}
+
+/**
+ * Compute freshness (0-100) from a signal timestamp ISO string.
+ * < 2h   → 100..75 range  (Fresh)
+ * 2-8h   → 75..25 range   (Aging)
+ * > 8h   → < 25           (Stale, approaches 0 at 16h+)
+ */
+function computeFreshnessFromTimestamp(timestamp: string): number {
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  const ageHours = ageMs / 3_600_000;
+  if (ageHours < 2) return Math.round(100 - (ageHours / 2) * 25); // 100 → 75
+  if (ageHours < 8) return Math.round(75 - ((ageHours - 2) / 6) * 50); // 75 → 25
+  return Math.max(0, Math.round(25 - ((ageHours - 8) / 8) * 25)); // 25 → 0
+}
+
+// --------------- Alpha decay endpoint types ---------------
+
+interface AlphaDecayEntry {
+  strategy: string;
+  signal_age_hours: number;
+  freshness: number;
+}
+
+interface AlphaDecayResponse {
+  strategies: AlphaDecayEntry[];
+}
+
+// --------------- AlphaFreshnessPanel ---------------
+
+interface StrategyFreshness {
+  name: string;
+  freshness: number;
+}
+
+interface AlphaFreshnessPanelProps {
+  /** Fallback: derive freshness from live signals if endpoint unavailable */
+  signalEntries: [string, AgentSignal][];
+}
+
+function AlphaFreshnessPanel({ signalEntries }: AlphaFreshnessPanelProps) {
+  const { data, isError } = useQuery<AlphaDecayResponse>({
+    queryKey: ["alpha-decay"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/analytics/alpha-decay");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<AlphaDecayResponse>;
+    },
+    retry: false,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  // Build strategy list: prefer API data, fall back to computing from signal timestamps
+  const strategies: StrategyFreshness[] = (() => {
+    if (data?.strategies && data.strategies.length > 0) {
+      return data.strategies.map((s) => ({
+        name: s.strategy,
+        freshness: s.freshness,
+      }));
+    }
+    if (isError || !data) {
+      // Derive from signal timestamps grouped by strategy name
+      const byStrategy = new Map<string, number[]>();
+      for (const [, sig] of signalEntries) {
+        const key = sig.strategy_name ?? "Unknown";
+        const freshness = computeFreshnessFromTimestamp(sig.timestamp);
+        const existing = byStrategy.get(key) ?? [];
+        byStrategy.set(key, [...existing, freshness]);
+      }
+      return [...byStrategy.entries()].map(([name, values]) => ({
+        name,
+        freshness: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+      }));
+    }
+    return [];
+  })();
+
+  if (strategies.length === 0) return null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-surface p-3">
+      <h4 className="text-xs font-medium text-gray-400 mb-2">Alpha Freshness</h4>
+      <div className="space-y-1.5" role="list" aria-label="Strategy freshness indicators">
+        {strategies.map((s) => (
+          <div
+            key={s.name}
+            className="flex items-center justify-between"
+            role="listitem"
+          >
+            <span className="text-xs text-gray-300 truncate max-w-[120px]" title={s.name}>
+              {s.name}
+            </span>
+            <div className="flex items-center gap-2 ml-2">
+              <div
+                className="w-20 h-1.5 bg-surface rounded-full overflow-hidden"
+                role="progressbar"
+                aria-valuenow={s.freshness}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${s.name} freshness: ${s.freshness}%`}
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${getFreshnessBarColor(s.freshness)}`}
+                  style={{ width: `${s.freshness}%` }}
+                />
+              </div>
+              <span className={`text-xs font-medium min-w-[32px] text-right ${getFreshnessTextColor(s.freshness)}`}>
+                {getFreshnessLabel(s.freshness)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // --------------- Sub-components ---------------
@@ -433,7 +572,7 @@ export function AgentPanel() {
     refetchInterval: 10_000,
   });
 
-  const entries = signals ? Object.entries(signals) : [];
+  const entries: [string, AgentSignal][] = signals ? Object.entries(signals) : [];
 
   return (
     <div className="space-y-6">
@@ -456,6 +595,9 @@ export function AgentPanel() {
           </div>
         )}
       </div>
+
+      {/* Alpha Freshness */}
+      <AlphaFreshnessPanel signalEntries={entries} />
 
       <LearningLog />
 

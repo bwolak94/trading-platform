@@ -20,6 +20,16 @@ from app.api.v1.risk_advanced import router as risk_advanced_router
 from app.api.v1.market_intelligence import router as market_intelligence_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.automation import router as automation_router
+from app.api.v1.monitoring import router as monitoring_router
+from app.api.v1.mtf_matrix import router as mtf_matrix_router
+from app.api.v1.benchmark import router as benchmark_router
+from app.api.v1.earnings import router as earnings_router
+from app.ai.signals.regime_transition import router as regime_transition_router
+from app.ai.signals.liquidation_cascade import router as liquidation_cascade_router
+from app.ai.risk.drawdown_budget import router as drawdown_budget_router
+from app.api.v1.features import router as features_router
+from app.api.v1.features2 import router as features2_router
+from app.api.v1.futures_testnet import router as futures_testnet_router
 from app.core.config import settings as app_settings
 from app.core.exceptions import (
     DataFetchError,
@@ -421,6 +431,16 @@ app.include_router(risk_advanced_router, prefix="/api/v1")
 app.include_router(market_intelligence_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(automation_router, prefix="/api/v1")
+app.include_router(monitoring_router, prefix="/api/v1")
+app.include_router(mtf_matrix_router, prefix="/api/v1")
+app.include_router(benchmark_router, prefix="/api/v1")
+app.include_router(earnings_router, prefix="/api/v1")
+app.include_router(regime_transition_router, prefix="/api/v1")
+app.include_router(liquidation_cascade_router, prefix="/api/v1")
+app.include_router(drawdown_budget_router, prefix="/api/v1")
+app.include_router(features_router, prefix="/api/v1")
+app.include_router(features2_router, prefix="/api/v1")
+app.include_router(futures_testnet_router, prefix="/api/v1")
 
 
 # Health & status

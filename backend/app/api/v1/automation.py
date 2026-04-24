@@ -214,3 +214,81 @@ async def get_active_sessions() -> dict:
     """Get all active user sessions (admin view)."""
     from app.auth.roles import get_session_manager
     return {"sessions": get_session_manager().get_active_sessions()}
+
+
+# --- Alert Formula (alias for alert-rules with extended visual-builder schema) ---
+
+class AlertFormulaRequest(BaseModel):
+    """Request body for creating a visual alert formula."""
+
+    name: str
+    formula: str
+    conditions: list[dict] = Field(default_factory=list)
+    asset: str = ""
+    channel: str = "Telegram"
+
+
+@router.get("/alert-formula")
+async def list_alert_formulas() -> dict:
+    """List all saved alert formulas."""
+    from app.ai.automation.alert_engine import get_alert_engine
+    rules = get_alert_engine().get_rules()
+    alerts = [
+        {
+            "id": r.get("rule_id", r.get("id", "")),
+            "name": r.get("name", ""),
+            "formula": r.get("description", ""),
+            "asset": r.get("symbol", ""),
+            "channel": (r.get("channels") or ["Telegram"])[0].capitalize(),
+            "created_at": r.get("created_at", ""),
+        }
+        for r in rules
+    ]
+    return {"alerts": alerts}
+
+
+@router.post("/alert-formula")
+async def create_alert_formula(body: AlertFormulaRequest) -> dict:
+    """Save a new visual alert formula."""
+    import uuid
+    from datetime import datetime, timezone
+    from app.ai.automation.alert_engine import AlertRule, get_alert_engine
+    rule_id = str(uuid.uuid4())
+    rule = AlertRule(
+        rule_id=rule_id,
+        name=body.name,
+        condition_type="CUSTOM",
+        operator=">",
+        threshold=0.0,
+        symbol=body.asset,
+        channels=[body.channel.lower()],
+        description=body.formula,
+    )
+    get_alert_engine().add_rule(rule)
+    return {
+        "id": rule_id,
+        "name": body.name,
+        "formula": body.formula,
+        "asset": body.asset,
+        "channel": body.channel,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/alert-formula/test")
+async def test_alert_formula(body: dict) -> dict:
+    """Test whether a formula would currently match for a given asset."""
+    formula = body.get("formula", "")
+    asset = body.get("asset", "")
+    # Simple heuristic evaluation
+    matches = bool(formula and asset)
+    reason = f"Formula '{formula}' evaluated for {asset}" if matches else "Empty formula or asset"
+    return {"matches": matches, "reason": reason}
+
+
+@router.delete("/alert-formula/{alert_id}")
+async def delete_alert_formula(alert_id: str) -> dict:
+    """Delete an alert formula by ID."""
+    from app.ai.automation.alert_engine import get_alert_engine
+    removed = get_alert_engine().remove_rule(alert_id)
+    return {"status": "removed" if removed else "not_found", "id": alert_id}

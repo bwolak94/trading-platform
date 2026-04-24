@@ -157,7 +157,7 @@ function LiquidationView({ levels, price }: { levels: LiquidationLevel[]; price:
   );
 }
 
-function LiqBar({ liq, price, side }: { liq: LiquidationLevel; price: number; side: string }) {
+function LiqBar({ liq, price: _price, side }: { liq: LiquidationLevel; price: number; side: string }) {
   const color = side === "short" ? "bg-bearish" : "bg-bullish";
   return (
     <div className="flex items-center gap-3 rounded bg-background px-2 py-1.5">
@@ -175,7 +175,7 @@ function LiqBar({ liq, price, side }: { liq: LiquidationLevel; price: number; si
 
 /* --- Order Blocks & FVGs --- */
 
-function LevelsView({ obs, fvgs, price }: { obs: OrderBlockData[]; fvgs: FVGData[]; price: number }) {
+function LevelsView({ obs, fvgs, price: _price }: { obs: OrderBlockData[]; fvgs: FVGData[]; price: number }) {
   const activeObs = obs.filter((ob) => ob.status === "active").slice(-8);
   const activeFvgs = fvgs.filter((f) => !f.filled).slice(-8);
 

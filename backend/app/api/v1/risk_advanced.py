@@ -1,7 +1,11 @@
-"""Advanced Risk Management API — Kelly, EV filter, drawdown, stress test, RoR."""
+"""Advanced Risk Management API — Kelly, EV filter, drawdown, stress test, RoR, VaR."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
 
 router = APIRouter(prefix="/risk", tags=["risk-advanced"])
 
@@ -138,6 +142,54 @@ async def run_stress_test(body: StressTestRequest) -> dict:
     )
 
 
+@router.get("/stress")
+async def get_stress_test(
+    scenarios: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get stress test results for current paper trading positions (GET alias)."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.ai.risk.stress_tester import run_stress_test
+    from app.models.simulated_position import SimulatedPosition
+
+    result = await db.execute(
+        select(SimulatedPosition).where(SimulatedPosition.status == "OPEN").limit(20)
+    )
+    open_positions = result.scalars().all()
+    positions = [
+        {
+            "symbol": p.symbol,
+            "direction": p.direction,
+            "entry_price": float(p.entry_price or 0),
+            "current_price": float(p.entry_price or 0),
+            "size_usd": float(getattr(p, "position_size_usdt", 100)),
+        }
+        for p in open_positions
+    ]
+    scenario_list = scenarios.split(",") if scenarios else None
+    try:
+        return await run_stress_test(positions=positions, scenarios=scenario_list)
+    except Exception:
+        return {
+            "scenarios": [],
+            "portfolio_value": 0.0,
+            "last_run": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+@router.post("/stress")
+async def run_stress_test_alias(body: StressTestRequest) -> dict:
+    """Alias for /stress-test (POST)."""
+    from app.ai.risk.stress_tester import run_stress_test
+    return await run_stress_test(
+        positions=body.positions,
+        scenarios=body.scenarios,
+    )
+
+
 @router.post("/risk-of-ruin")
 async def compute_risk_of_ruin(body: RiskOfRuinRequest) -> dict:
     """Compute risk of ruin probability via Monte Carlo simulation."""
@@ -156,3 +208,63 @@ async def get_drawdown_tiers() -> dict:
     """Get the drawdown waterfall tier definitions."""
     from app.ai.risk.drawdown_waterfall import DRAWDOWN_TIERS
     return {"tiers": DRAWDOWN_TIERS}
+
+
+@router.get("/var")
+async def get_value_at_risk(
+    confidence: float = Query(default=0.95, ge=0.5, le=0.999, description="Confidence level for VaR"),
+    lookback_days: int = Query(default=30, ge=1, le=365, description="Number of days to look back"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get VaR and CVaR for the current paper trading portfolio.
+
+    Fetches recent closed simulated positions from the database, derives per-trade
+    percentage returns and feeds them to the RiskEngine's portfolio VaR calculation.
+
+    Returns:
+        Dict with ``var_95``, ``cvar_95``, ``var_99``, ``cvar_99`` and ``confidence``.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.ai.risk.engine import RiskEngine
+    from app.models.simulated_position import SimulatedPosition
+
+    risk_engine = RiskEngine()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    result = await db.execute(
+        select(SimulatedPosition)
+        .where(
+            SimulatedPosition.status != "OPEN",
+            SimulatedPosition.pnl_pct.isnot(None),
+            SimulatedPosition.closed_at >= cutoff,
+        )
+        .order_by(desc(SimulatedPosition.closed_at))
+    )
+    closed_positions = result.scalars().all()
+
+    if not closed_positions:
+        return {
+            "var_95": 0.0,
+            "cvar_95": 0.0,
+            "var_99": 0.0,
+            "cvar_99": 0.0,
+            "confidence": confidence,
+            "sample_size": 0,
+            "lookback_days": lookback_days,
+        }
+
+    # Build position dicts expected by calculate_portfolio_var
+    position_dicts = [
+        {"returns": [float(pos.pnl_pct)]}
+        for pos in closed_positions
+    ]
+
+    var_result = risk_engine.calculate_portfolio_var(position_dicts, confidence=confidence)
+
+    return {
+        **var_result,
+        "confidence": confidence,
+        "sample_size": len(closed_positions),
+        "lookback_days": lookback_days,
+    }

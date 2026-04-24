@@ -1604,3 +1604,183 @@ async def delete_alert_rule_endpoint(rule_id: str) -> dict:
 
     remove_alert_rule(rule_id)
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# OHLCV alias (frontend calls /market/ohlcv, backend has /market/klines)
+# ---------------------------------------------------------------------------
+
+@router.get("/ohlcv")
+async def get_ohlcv(
+    symbol: str = Query(..., description="Trading symbol, e.g. BTCUSDT"),
+    timeframe: str = Query(default="1h", description="Candlestick interval"),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> dict:
+    """Return OHLCV candlestick data — alias for /klines compatible with frontend."""
+    from datetime import datetime, timezone
+
+    from app.data.fetchers.binance_fetcher import BinanceFetcher
+
+    sym = symbol.upper().replace("/", "")
+    try:
+        fetcher = BinanceFetcher()
+        df = await fetcher.fetch_klines(sym, timeframe, limit=limit)
+        if df is None or df.empty:
+            return {"symbol": sym, "timeframe": timeframe, "candles": []}
+        candles = [
+            {
+                "time": int(row.Index.timestamp()) if hasattr(row.Index, "timestamp") else 0,
+                "open": float(row.open),
+                "high": float(row.high),
+                "low": float(row.low),
+                "close": float(row.close),
+                "volume": float(row.volume),
+            }
+            for row in df.itertuples()
+        ]
+        return {
+            "symbol": sym,
+            "timeframe": timeframe,
+            "candles": candles,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        return {"symbol": sym, "timeframe": timeframe, "candles": [], "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Funding Arbitrage Scanner
+# ---------------------------------------------------------------------------
+
+@router.get("/funding-arbitrage")
+async def get_funding_arbitrage(
+    min_rate_pct: float = Query(default=0.05, description="Minimum |funding rate| % to include"),
+    top_n: int = Query(default=10, ge=1, le=50),
+) -> dict:
+    """Scan perpetual funding rates and surface top arbitrage opportunities.
+
+    Returns symbols with extreme funding rates where receiving direction
+    (long or short) is profitable enough to consider as carry trade.
+    """
+    from datetime import datetime, timezone
+
+    from app.data.fetchers.funding_rate_fetcher import FundingRateFetcher
+
+    try:
+        fetcher = FundingRateFetcher()
+        rates = await fetcher.fetch_funding_rates()
+
+        opportunities = []
+        for r in rates:
+            fr = float(r.get("funding_rate", 0))
+            abs_fr = abs(fr)
+            annualized = round(abs_fr * 3 * 365 * 100, 2)  # 3 payments/day × 365
+            if abs_fr * 100 < min_rate_pct:
+                continue
+            if abs_fr > 0.005:
+                strength = "EXTREME"
+            elif abs_fr > 0.002:
+                strength = "HIGH"
+            else:
+                strength = "MODERATE"
+
+            opportunities.append({
+                "symbol": r.get("symbol", ""),
+                "funding_rate": round(fr * 100, 4),
+                "annualized_rate_pct": annualized,
+                "receiving_direction": "SHORT" if fr > 0 else "LONG",
+                "signal_strength": strength,
+                "next_funding_time": r.get("next_funding_time"),
+            })
+
+        opportunities.sort(key=lambda x: abs(x["funding_rate"]), reverse=True)
+        return {
+            "opportunities": opportunities[:top_n],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        from datetime import datetime, timezone
+        return {
+            "opportunities": [],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "error": str(exc),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Microstructure Score
+# ---------------------------------------------------------------------------
+
+@router.get("/microstructure-score/{symbol}")
+async def get_microstructure_score(
+    symbol: str,
+    timeframe: str = Query(default="1h", description="Candle timeframe"),
+) -> dict:
+    """Return 0-100 market quality score for a symbol.
+
+    Combines order book imbalance, funding rate, liquidation proximity,
+    spread proxy, and CVD trend.
+    """
+    from datetime import datetime, timezone
+
+    from app.ai.signals.microstructure_score import calculate_microstructure_score
+    from app.data.fetchers.binance_fetcher import BinanceFetcher
+
+    sym = symbol.upper().replace("/", "")
+    try:
+        fetcher = BinanceFetcher()
+        df = await fetcher.fetch_klines(sym, timeframe, limit=50)
+        if df is None or len(df) < 10:
+            return {"symbol": sym, "score": 50, "label": "NEUTRAL", "components": {}}
+
+        # Derive simple inputs
+        close = float(df["close"].iloc[-1])
+        vol_mean = float(df["volume"].mean())
+        vol_current = float(df["volume"].iloc[-1])
+        price_change = (close - float(df["close"].iloc[-5])) / max(close, 1)
+        ob_imbalance = min(max(price_change * 5, -1.0), 1.0)
+        volume_ratio = vol_current / max(vol_mean, 1)
+
+        funding_rate = 0.0
+        try:
+            from app.data.fetchers.funding_rate_fetcher import FundingRateFetcher
+            fr_fetcher = FundingRateFetcher()
+            rates = await fr_fetcher.fetch_funding_rates(symbols=[sym])
+            if rates:
+                funding_rate = float(rates[0].get("funding_rate", 0))
+        except Exception:
+            pass
+
+        result = calculate_microstructure_score(
+            orderbook_imbalance=ob_imbalance,
+            funding_rate=funding_rate,
+            liquidation_proximity_pct=5.0,
+            cvd_trend=price_change,
+            volume_ratio=volume_ratio,
+        )
+
+        score = result.get("score", 50)
+        if score >= 70:
+            label = "FAVORABLE"
+        elif score >= 45:
+            label = "NEUTRAL"
+        else:
+            label = "AVOID"
+
+        return {
+            "symbol": sym,
+            "score": score,
+            "label": label,
+            "components": result.get("components", {}),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        from datetime import datetime, timezone
+        return {
+            "symbol": sym,
+            "score": 50,
+            "label": "NEUTRAL",
+            "components": {},
+            "error": str(exc),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }

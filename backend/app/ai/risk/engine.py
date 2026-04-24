@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
+import numpy as np
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -373,6 +374,88 @@ class RiskEngine:
                 break
 
         return {"wins": wins, "losses": losses}
+
+    def calculate_var(self, returns: list[float], confidence: float = 0.95) -> float:
+        """Calculate Value at Risk at given confidence level using historical simulation.
+
+        VaR represents the loss threshold at the given confidence level — i.e. with
+        ``confidence`` probability losses will not exceed this value.
+
+        Args:
+            returns: List of percentage returns (can be negative for losses).
+            confidence: Confidence level, e.g. 0.95 for 95% VaR.
+
+        Returns:
+            VaR as a positive number representing potential loss percentage.
+            Returns 0.0 if ``returns`` is empty.
+        """
+        if not returns:
+            return 0.0
+        arr = np.array(returns, dtype=float)
+        # VaR is the percentile of *losses* — negate returns so losses are positive
+        losses = -arr
+        var = float(np.percentile(losses, confidence * 100))
+        return round(max(var, 0.0), 4)
+
+    def calculate_cvar(self, returns: list[float], confidence: float = 0.95) -> float:
+        """Calculate Conditional VaR (Expected Shortfall) — average loss beyond VaR.
+
+        CVaR is the expected loss given that the loss exceeds the VaR threshold,
+        providing a fuller picture of tail risk than VaR alone.
+
+        Args:
+            returns: List of percentage returns.
+            confidence: Confidence level, e.g. 0.95 for 95% CVaR.
+
+        Returns:
+            CVaR as a positive number representing expected tail loss percentage.
+            Returns 0.0 if ``returns`` is empty or no tail observations exist.
+        """
+        if not returns:
+            return 0.0
+        arr = np.array(returns, dtype=float)
+        losses = -arr
+        var_threshold = np.percentile(losses, confidence * 100)
+        tail_losses = losses[losses >= var_threshold]
+        if len(tail_losses) == 0:
+            return round(float(var_threshold), 4)
+        cvar = float(np.mean(tail_losses))
+        return round(max(cvar, 0.0), 4)
+
+    def calculate_portfolio_var(
+        self,
+        positions: list[dict],
+        confidence: float = 0.95,
+    ) -> dict[str, float]:
+        """Calculate portfolio-level VaR and CVaR from a list of position dicts.
+
+        Each position dict should contain at minimum a ``returns`` key with a list
+        of float percentage returns. If individual position returns are not available
+        the method falls back to pnl_pct series from closed position records.
+
+        Args:
+            positions: List of position dicts, each with a ``returns`` list of floats.
+            confidence: Primary confidence level (default 0.95).
+
+        Returns:
+            Dict with keys: ``var_95``, ``cvar_95``, ``var_99``, ``cvar_99``.
+        """
+        # Aggregate all returns across all positions into a combined series
+        all_returns: list[float] = []
+        for pos in positions:
+            pos_returns = pos.get("returns", [])
+            if isinstance(pos_returns, list):
+                all_returns.extend(float(r) for r in pos_returns)
+
+        if not all_returns:
+            return {"var_95": 0.0, "cvar_95": 0.0, "var_99": 0.0, "cvar_99": 0.0}
+
+        return {
+            "var_95": self.calculate_var(all_returns, confidence=0.95),
+            "cvar_95": self.calculate_cvar(all_returns, confidence=0.95),
+            "var_99": self.calculate_var(all_returns, confidence=0.99),
+            "cvar_99": self.calculate_cvar(all_returns, confidence=0.99),
+        }
 
     async def _get_user_settings(
         self, user_id: str, db: AsyncSession

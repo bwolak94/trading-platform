@@ -7,6 +7,138 @@ const directionConfig = {
   NEUTRAL: { icon: "\u26AA", color: "text-gray-400", border: "border-border" },
 } as const;
 
+// --------------- Sparkline hook ---------------
+
+interface OHLCVBar {
+  close: number;
+}
+
+interface SparklineState {
+  prices: number[];
+  isLoading: boolean;
+  error: boolean;
+}
+
+function useSparkline(asset: string): SparklineState {
+  const [state, setState] = useState<SparklineState>({
+    prices: [],
+    isLoading: true,
+    error: false,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ prices: [], isLoading: true, error: false });
+
+    const symbol = asset.includes("USDT") ? asset : `${asset}USDT`;
+
+    fetch(`/api/v1/market/ohlcv?symbol=${symbol}&timeframe=1h&limit=24`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<OHLCVBar[] | { data: OHLCVBar[] }>;
+      })
+      .then((body) => {
+        if (cancelled) return;
+        const bars: OHLCVBar[] = Array.isArray(body) ? body : (body as { data: OHLCVBar[] }).data ?? [];
+        const prices = bars.map((b) => b.close).filter((p): p is number => typeof p === "number");
+        setState({ prices, isLoading: false, error: false });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ prices: [], isLoading: false, error: true });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asset]);
+
+  return state;
+}
+
+// --------------- Sparkline SVG ---------------
+
+interface SparklineProps {
+  prices: number[];
+}
+
+function Sparkline({ prices }: SparklineProps) {
+  if (!prices || prices.length < 2) return null;
+
+  const firstPrice = prices[0] ?? 0;
+  const lastPrice = prices[prices.length - 1] ?? 0;
+
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const width = 80;
+  const height = 24;
+
+  const points = prices
+    .map((p, i) => {
+      const x = (i / (prices.length - 1)) * width;
+      const y = height - ((p - min) / range) * height;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  const isUp = lastPrice >= firstPrice;
+  const color = isUp ? "#22c55e" : "#ef4444";
+
+  return (
+    <svg
+      width={width}
+      height={height}
+      className="opacity-70"
+      aria-label={`Price trend over 24h: ${isUp ? "up" : "down"}`}
+      role="img"
+    >
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SparklineSkeleton() {
+  return (
+    <div
+      className="h-6 w-20 animate-pulse rounded bg-border/40"
+      aria-label="Loading sparkline"
+      aria-busy="true"
+    />
+  );
+}
+
+// --------------- SparklineSection (fetches + renders) ---------------
+
+function SparklineSection({ asset }: { asset: string }) {
+  const { prices, isLoading } = useSparkline(asset);
+
+  if (isLoading) return <SparklineSkeleton />;
+  if (prices.length < 2) return null;
+
+  const firstPrice = prices[0] ?? 0;
+  const lastPrice = prices[prices.length - 1] ?? 0;
+  const isUp = lastPrice >= firstPrice;
+  const changePct =
+    firstPrice !== 0
+      ? (((lastPrice - firstPrice) / firstPrice) * 100).toFixed(2)
+      : "0.00";
+
+  return (
+    <div className="flex items-center gap-2">
+      <Sparkline prices={prices} />
+      <span
+        className={`font-mono text-xs ${isUp ? "text-green-400" : "text-red-400"}`}
+        aria-label={`24h change: ${isUp ? "+" : ""}${changePct}%`}
+      >
+        {isUp ? "+" : ""}
+        {changePct}%
+      </span>
+    </div>
+  );
+}
+
+// --------------- SignalCard ---------------
+
 interface SignalCardProps {
   signal: Signal;
   isNew?: boolean;
@@ -52,7 +184,7 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
           <div className="mb-1 flex items-center justify-between text-sm">
             <span className="text-gray-400">Confidence</span>
             <span className={`font-mono font-bold ${config.color}`}>
-              {signal.confidence.toFixed(0)}%
+              {(signal.confidence ?? 0).toFixed(0)}%
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-background">
@@ -60,7 +192,7 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
               className={`h-full rounded-full ${
                 signal.direction === "LONG" ? "bg-bullish" : "bg-bearish"
               }`}
-              style={{ width: `${Math.min(signal.confidence, 100)}%` }}
+              style={{ width: `${Math.min(signal.confidence ?? 0, 100)}%` }}
             />
           </div>
           {/* Confidence tooltip on hover */}
@@ -70,7 +202,7 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
               <div key={i} className="flex justify-between text-xs">
                 <span className="text-gray-300">{f.name}</span>
                 <span className="font-mono text-white">
-                  {(f.weight * f.score * 100).toFixed(0)}pts ({(f.weight * 100).toFixed(0)}%)
+                  {((f.weight ?? 0) * (f.score ?? 0) * 100).toFixed(0)}pts ({((f.weight ?? 0) * 100).toFixed(0)}%)
                 </span>
               </div>
             ))}
@@ -78,8 +210,14 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
         </div>
         <p className="mt-1 text-sm text-gray-300">
           Probability of {signal.direction === "LONG" ? "upward" : "downward"}{" "}
-          breakout: {signal.confidence.toFixed(0)}%
+          breakout: {(signal.confidence ?? 0).toFixed(0)}%
         </p>
+      </div>
+
+      {/* Sparkline — 24h price action */}
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-xs text-gray-500">24h Price</span>
+        <SparklineSection asset={signal.asset} />
       </div>
 
       {/* Factors */}
@@ -101,16 +239,18 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
 
       {/* Levels */}
       <div className="mb-3 grid grid-cols-2 gap-2">
-        <LevelRow label="Entry" value={signal.entry_price} />
-        <LevelRow label="SL" value={signal.stop_loss} className="text-bearish" />
-        <LevelRow label="TP1" value={signal.take_profit_1} className="text-bullish" />
-        <LevelRow label="TP2" value={signal.take_profit_2} className="text-bullish" />
+        <LevelRow label="Entry" value={signal.entry_price ?? 0} />
+        <LevelRow label="SL" value={signal.stop_loss ?? 0} className="text-bearish" />
+        <LevelRow label="TP1" value={signal.take_profit_1 ?? 0} className="text-bullish" />
+        {signal.take_profit_2 != null && (
+          <LevelRow label="TP2" value={signal.take_profit_2} className="text-bullish" />
+        )}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border pt-3 text-xs text-gray-500">
         <span className="rounded bg-background px-2 py-0.5">
-          R/R {signal.risk_reward.toFixed(1)}
+          R/R {(signal.risk_reward ?? 0).toFixed(1)}
         </span>
         <RegimeBadge regime={signal.regime} />
         <div className="flex flex-col items-end gap-0.5">

@@ -186,7 +186,7 @@ interface SetupData {
   conditions: { label: string; met: boolean }[];
 }
 
-function SuggestedSetup({ setup, strategyName }: { setup: SetupData; strategyName: string }) {
+function SuggestedSetup({ setup, strategyName: _strategyName }: { setup: SetupData; strategyName: string }) {
   const isLong = setup.bias === "LONG";
   const readinessColor =
     setup.readiness >= 80 ? "text-bullish" :

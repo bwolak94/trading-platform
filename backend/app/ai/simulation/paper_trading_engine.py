@@ -27,6 +27,9 @@ PRICE_CHECK_INTERVAL = 10  # seconds between TP/SL price checks
 COOLDOWN_HOURS = 4             # hours before re-entering same symbol after close
 MIN_24H_VOLUME_USD = 50_000_000  # minimum 24h volume in USD to scan symbol
 SESSION_FILTER = None          # None = all sessions, "LONDON", "NEWYORK", "ASIAN"
+FUNDING_CHECK_INTERVAL = 28_800  # 8 hours in seconds
+DEFAULT_LEVERAGE = 5.0           # default leverage for enhanced paper positions
+DEFAULT_POSITION_SIZE_USDT = 200.0  # default position size in USDT
 
 
 class PaperTradingEngine:
@@ -44,6 +47,7 @@ class PaperTradingEngine:
         self._running = False
         self._scan_task: asyncio.Task | None = None
         self._monitor_task: asyncio.Task | None = None
+        self._funding_task: asyncio.Task | None = None
         self._session_id: uuid.UUID = uuid.uuid4()
         self.position_manager = PositionManager(max_positions=MAX_POSITIONS)
         self.performance_tracker = PerformanceTracker()
@@ -53,6 +57,10 @@ class PaperTradingEngine:
         self._symbol_blacklist: set[str] = set()
         self._symbol_whitelist: set[str] = set()       # if non-empty, only scan these
         self._auto_blacklist: dict[str, list[datetime]] = {}  # symbol → recent SL times
+        # --- Enhanced paper trading state ---
+        self._default_leverage: float = DEFAULT_LEVERAGE
+        self._default_position_size_usdt: float = DEFAULT_POSITION_SIZE_USDT
+        self._funding_history: list[dict] = []
 
     # ------------------------------------------------------------------ #
     # Lifecycle                                                            #
@@ -68,6 +76,7 @@ class PaperTradingEngine:
         await self._persist_session_start()
         self._scan_task = asyncio.create_task(self._scan_loop(), name="sim_scan")
         self._monitor_task = asyncio.create_task(self._monitor_loop(), name="sim_monitor")
+        self._funding_task = asyncio.create_task(self._funding_loop(), name="sim_funding")
         logger.info("PaperTradingEngine started — session %s", self._session_id)
 
     async def stop(self) -> None:
@@ -77,6 +86,8 @@ class PaperTradingEngine:
             self._scan_task.cancel()
         if self._monitor_task:
             self._monitor_task.cancel()
+        if self._funding_task:
+            self._funding_task.cancel()
         await self._persist_session_end()
         logger.info("PaperTradingEngine stopped — session %s", self._session_id)
 
@@ -105,6 +116,58 @@ class PaperTradingEngine:
             except Exception as exc:
                 logger.exception("Error in PaperTradingEngine monitor loop: %s", exc)
             await asyncio.sleep(PRICE_CHECK_INTERVAL)
+
+    async def _funding_loop(self) -> None:
+        """Apply funding rate to leveraged positions every 8 hours."""
+        while self._running:
+            try:
+                await asyncio.sleep(FUNDING_CHECK_INTERVAL)
+                await self._apply_funding_rates()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.exception("Error in PaperTradingEngine funding loop: %s", exc)
+
+    async def _apply_funding_rates(self) -> None:
+        """Charge/credit funding rate to all open leveraged positions."""
+        from app.data.binance_futures_testnet import get_testnet_client
+
+        open_pos = self.position_manager.open_positions
+        if not open_pos:
+            return
+
+        now = datetime.now(timezone.utc)
+        charged = 0
+        for pos in open_pos:
+            if pos.leverage <= 1:
+                continue
+            # Try to fetch live funding rate from Binance; fall back to default
+            funding_rate = 0.01  # default 0.01%
+            try:
+                client = get_testnet_client()
+                resp = await client._get(
+                    "/fapi/v1/fundingRate",
+                    {"symbol": pos.symbol.replace("/", ""), "limit": 1},
+                    signed=False,
+                )
+                if resp:
+                    funding_rate = abs(float(resp[-1].get("fundingRate", 0.0001))) * 100
+            except Exception:
+                pass
+
+            pos.apply_funding_rate(funding_rate)
+            pos.last_funding_at = now
+            charged += 1
+            self._funding_history.append({
+                "symbol": pos.symbol,
+                "direction": pos.direction,
+                "funding_rate_pct": funding_rate,
+                "charged_at": now.isoformat(),
+                "total_charged_pct": pos.funding_charged_pct,
+            })
+
+        if charged:
+            logger.info("Funding rates applied to %d leveraged positions", charged)
 
     # ------------------------------------------------------------------ #
     # Signal scanning                                                      #
@@ -516,6 +579,69 @@ class PaperTradingEngine:
         closed = self.position_manager.closed_positions[-limit:]
         return [self._pos_to_dict(p) for p in reversed(closed)]
 
+    def get_funding_history(self, limit: int = 50) -> list[dict]:
+        """Return the last N funding rate charges."""
+        return self._funding_history[-limit:]
+
+    async def open_manual_position(
+        self,
+        symbol: str,
+        direction: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profit_1: float,
+        take_profit_2: float | None = None,
+        take_profit_3: float | None = None,
+        strategy: str = "manual",
+        regime: str = "MANUAL",
+        confidence: int = 80,
+        leverage: float = 1.0,
+        position_size_usdt: float = 100.0,
+    ) -> dict[str, Any]:
+        """Open a manual paper position — used by the enhanced paper trading UI.
+
+        Returns the serialized position dict or raises ValueError on validation failure.
+        """
+        if not self.position_manager.can_open(symbol):
+            raise ValueError(f"Cannot open position for {symbol}: already open or at max capacity")
+        if entry_price <= 0 or stop_loss <= 0:
+            raise ValueError("entry_price and stop_loss must be positive")
+
+        pos = SimPosition(
+            id=uuid.uuid4(),
+            symbol=symbol.upper(),
+            direction=direction,  # type: ignore[arg-type]
+            strategy=strategy,
+            regime=regime,
+            confidence=confidence,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit_1=take_profit_1,
+            take_profit_2=take_profit_2,
+            take_profit_3=take_profit_3,
+            session_id=self._session_id,
+            leverage=float(leverage),
+            position_size_usdt=float(position_size_usdt),
+        )
+
+        self.position_manager.open_position(pos)
+        await self._persist_position(pos)
+        await self._broadcast_position_update(pos, "opened")
+        logger.info(
+            "Manual paper position opened: %s %s leverage=%.0fx size=$%.0f",
+            symbol, direction, leverage, position_size_usdt,
+        )
+        return self._pos_to_dict(pos)
+
+    def set_defaults(self, leverage: float, position_size_usdt: float) -> None:
+        """Update default leverage and position size for auto-opened positions."""
+        self._default_leverage = max(1.0, min(125.0, leverage))
+        self._default_position_size_usdt = max(10.0, position_size_usdt)
+        logger.info(
+            "PaperEngine defaults updated: leverage=%.0fx size=$%.0f",
+            self._default_leverage, self._default_position_size_usdt,
+        )
+
     @property
     def is_running(self) -> bool:
         """True if the engine is currently running."""
@@ -560,6 +686,16 @@ class PaperTradingEngine:
             "tp1_partial_closed": pos.tp1_partial_closed,
             "tp2_partial_closed": pos.tp2_partial_closed,
             "realized_pnl_pct": round(pos.realized_pnl_pct, 4),
+            # Enhanced paper trading fields
+            "leverage": pos.leverage,
+            "position_size_usdt": pos.position_size_usdt,
+            "margin_usdt": pos.margin_usdt,
+            "fee_paid_pct": round(pos.fee_paid_pct, 4),
+            "funding_charged_pct": round(pos.funding_charged_pct, 4),
+            "liquidation_price": pos.liquidation_price,
+            "leveraged_pnl_pct": round(pos.leveraged_pnl_pct, 4),
+            "unrealized_pnl_usdt": pos.unrealized_pnl_usdt,
+            "distance_to_liquidation_pct": pos.distance_to_liquidation_pct,
         }
 
     @staticmethod

@@ -56,7 +56,7 @@ export function useTheme() {
     setThemeState((prev) => {
       const order: Theme[] = ["dark", "light", "terminal"];
       const nextIndex = (order.indexOf(prev) + 1) % order.length;
-      const next = order[nextIndex];
+      const next = order[nextIndex]!;
       try {
         localStorage.setItem(STORAGE_KEY, next);
       } catch {

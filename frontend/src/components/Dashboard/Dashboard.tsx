@@ -34,7 +34,7 @@ import { CommandPalette } from "../ui/CommandPalette";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { ShortcutsHelp } from "../ui/ShortcutsHelp";
 import { EquityCurvePanel } from "./EquityCurvePanel";
-import { MonteCarloPanel } from "./MonteCarloPanel";
+// MonteCarloPanel is available in the Advanced tab via dynamic import if needed
 import { MarketOverviewPanel } from "./MarketOverviewPanel";
 import { MomentumRankPanel } from "./MomentumRankPanel";
 import { StrategyHeatmapPanel } from "./StrategyHeatmapPanel";
@@ -48,11 +48,51 @@ import { MacroPanel } from "./MacroPanel";
 import { MarketSentimentPanel } from "./MarketSentimentPanel";
 import { SectorMomentumPanel } from "./SectorMomentumPanel";
 import { SessionClock } from "../ui/SessionClock";
-import { SettingsPanel } from "./SettingsPanel";
+// SettingsPanel rendered in settings modal conditionally
 import { OpenInterestPanel } from "./OpenInterestPanel";
 import { useTheme } from "../hooks/useTheme";
 import { usePanelOrder } from "../hooks/usePanelOrder";
-import type { PanelId } from "../hooks/usePanelOrder";
+// PanelId type used in drag-drop panel ordering hooks
+import { MTFSignalMatrix } from "./MTFSignalMatrix";
+import { BenchmarkPanel } from "./BenchmarkPanel";
+import { StressTestScenariosPanel } from "./StressTestScenariosPanel";
+import { SignalConfidenceTrend } from "./SignalConfidenceTrend";
+import { SoundSettings } from "./SoundSettings";
+import { EarningsCalendarPanel } from "./EarningsCalendarPanel";
+import { NewsSentimentVelocity } from "./NewsSentimentVelocity";
+import { FundingArbitragePanel } from "./FundingArbitragePanel";
+import { MarketMicrostructureScore } from "./MarketMicrostructureScore";
+import { RegimeTransitionForecast } from "./RegimeTransitionForecast";
+import { DrawdownBudgetWidget } from "./DrawdownBudgetWidget";
+import { SessionReplayWidget } from "./SessionReplayWidget";
+import { AlertFormulaBuilder } from "./AlertFormulaBuilder";
+import { LayoutPresets, useLayoutPreset } from "../ui/LayoutPresets";
+import WyckoffPhasePanel from "./WyckoffPhasePanel";
+import SupplyDemandZonesPanel from "./SupplyDemandZonesPanel";
+import FibConfluencePanel from "./FibConfluencePanel";
+import OptionsFlowPanel from "./OptionsFlowPanel";
+import MarketProfilePanel from "./MarketProfilePanel";
+import IntermarketPanel from "./IntermarketPanel";
+import SpreadQualityWidget from "./SpreadQualityWidget";
+import RecoveryProtocolWidget from "./RecoveryProtocolWidget";
+import DeltaNeutralCalculator from "./DeltaNeutralCalculator";
+import ConfidencePercentileWidget from "./ConfidencePercentileWidget";
+import SeasonalityPanel from "./SeasonalityPanel";
+import CrossExchangeMonitor from "./CrossExchangeMonitor";
+import TradeJournalPanel from "./TradeJournalPanel";
+import PortfolioRiskDashboard from "./PortfolioRiskDashboard";
+import MarketModeSelector from "./MarketModeSelector";
+import ConvictionScoreWidget from "./ConvictionScoreWidget";
+import SignalRiskPanel from "./SignalRiskPanel";
+import StopHuntPanel from "./StopHuntPanel";
+import CarryOptimizerPanel from "./CarryOptimizerPanel";
+import StreakCircuitBreakerWidget from "./StreakCircuitBreakerWidget";
+import CVDDivergenceWidget from "./CVDDivergenceWidget";
+import SmartMoneyFlowWidget from "./SmartMoneyFlowWidget";
+import OvernightGapWidget from "./OvernightGapWidget";
+import AnnotatedBenchmarkPanel from "./AnnotatedBenchmarkPanel";
+import PatternPerformancePanel from "./PatternPerformancePanel";
+import { AIBotTab } from "./AIBotTab";
 
 /* ── Section Error Boundary ─────────────────────────────────────────── */
 
@@ -113,6 +153,7 @@ class SectionErrorBoundary extends Component<SectionErrorBoundaryProps, SectionE
 /* ── Dashboard ─────────────────────────────────────────────────────── */
 
 type SideTab = "orderflow" | "chat";
+type ExtendedMainTab = "dashboard" | "positioning" | "bot" | "advanced";
 
 export function Dashboard() {
   const { isConnected, lastMessage, subscribe } = useWebSocket();
@@ -121,16 +162,28 @@ export function Dashboard() {
     settings, setSettings,
     systemPaused, setSystemPaused,
     drawdownPct, setDrawdownPct,
-    activeMainTab, setActiveMainTab,
+    activeMainTab: storeMainTab, setActiveMainTab: setStoreMainTab,
   } = useAppStore();
+
+  // Extended tab state that adds "advanced" on top of the store's two tabs
+  const [extendedTab, setExtendedTab] = useState<ExtendedMainTab>(storeMainTab);
+
+  const activeMainTab = extendedTab;
+  const setActiveMainTab = (tab: ExtendedMainTab) => {
+    setExtendedTab(tab);
+    if (tab === "dashboard" || tab === "positioning") {
+      setStoreMainTab(tab);
+    }
+  };
 
   // Theme management (applies data-theme attribute to document root)
   useTheme();
 
-  const { order, moveUp, moveDown, resetLayout } = usePanelOrder();
-  const [showSettings, setShowSettings] = useState(false);
+  const { resetLayout } = usePanelOrder();
+  const [_showSettings, setShowSettings] = useState(false);
 
   const [sideTab, setSideTab] = useState<SideTab>("orderflow");
+  const { activePreset, applyPreset } = useLayoutPreset();
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [chartAsset, setChartAsset] = useState("BTCUSDT");
   const [chartTf, setChartTf] = useState("1h");
@@ -320,31 +373,217 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Market Mode Selector */}
+      <div className="border-b border-border px-4 py-3">
+        <MarketModeSelector />
+      </div>
+
       {/* Main tab navigation */}
-      <div className="flex border-b border-border" role="tablist" aria-label="Main navigation tabs">
-        {(["dashboard", "positioning"] as const).map((tab) => (
+      <div className="flex overflow-x-auto border-b border-border" role="tablist" aria-label="Main navigation tabs">
+        {(["dashboard", "positioning", "bot", "advanced"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
             role="tab"
             aria-selected={activeMainTab === tab}
             onClick={() => setActiveMainTab(tab)}
-            className={`min-h-[44px] px-6 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] shrink-0 px-5 py-2 text-sm font-medium transition-colors ${
               activeMainTab === tab
                 ? "border-b-2 border-accent text-white"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "dashboard" ? "Dashboard" : "Open Interest"}
+            {tab === "dashboard" ? "Dashboard"
+              : tab === "positioning" ? "Open Interest"
+              : tab === "bot" ? (
+                <span className="flex items-center gap-1.5">
+                  Bot
+                  <span className="rounded-full bg-bullish/25 px-1.5 py-0.5 text-[9px] font-bold text-bullish">LIVE</span>
+                </span>
+              )
+              : "Advanced"}
           </button>
         ))}
       </div>
+
+      {/* Layout Presets toolbar — visible on dashboard tab */}
+      {activeMainTab === "dashboard" && (
+        <div className="border-b border-border px-4 py-2">
+          <LayoutPresets onApplyPreset={applyPreset} activePreset={activePreset} />
+        </div>
+      )}
+
+      {/* Bot tab */}
+      {activeMainTab === "bot" && (
+        <SectionErrorBoundary sectionName="AI Bot">
+          <AIBotTab />
+        </SectionErrorBoundary>
+      )}
 
       {/* Positioning tab */}
       {activeMainTab === "positioning" && (
         <SectionErrorBoundary sectionName="Positioning">
           <OpenInterestPanel defaultSymbol={chartAsset} />
         </SectionErrorBoundary>
+      )}
+
+      {/* Advanced tab */}
+      {activeMainTab === "advanced" && (
+        <div className="space-y-4 sm:space-y-6">
+
+          {/* MTF Signal Matrix */}
+          <SectionErrorBoundary sectionName="MTF Signal Matrix">
+            <MTFSignalMatrix onAssetSelect={handleSignalNavigate} />
+          </SectionErrorBoundary>
+
+          {/* Regime Transition Forecast */}
+          <SectionErrorBoundary sectionName="Regime Transition Forecast">
+            <RegimeTransitionForecast />
+          </SectionErrorBoundary>
+
+          {/* Market Microstructure + Drawdown Budget */}
+          <SectionErrorBoundary sectionName="Microstructure & Budget">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <MarketMicrostructureScore />
+              <DrawdownBudgetWidget />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Benchmark + Stress Test */}
+          <SectionErrorBoundary sectionName="Benchmark & Stress Test">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <BenchmarkPanel />
+              <StressTestScenariosPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Signal Confidence Trend */}
+          <SectionErrorBoundary sectionName="Signal Confidence Trend">
+            <SignalConfidenceTrend />
+          </SectionErrorBoundary>
+
+          {/* Funding Arbitrage + Earnings Calendar */}
+          <SectionErrorBoundary sectionName="Funding Arbitrage & Calendar">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <FundingArbitragePanel onViewChart={handleSignalNavigate} />
+              <EarningsCalendarPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* News Sentiment Velocity */}
+          <SectionErrorBoundary sectionName="News Sentiment">
+            <NewsSentimentVelocity />
+          </SectionErrorBoundary>
+
+          {/* Alert Formula Builder + Session Replay */}
+          <SectionErrorBoundary sectionName="Alert Builder & Session Replay">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <AlertFormulaBuilder />
+              <div className="space-y-4">
+                <SessionReplayWidget />
+                <SoundSettings />
+              </div>
+            </div>
+          </SectionErrorBoundary>
+
+          {/* ── NEW FEATURE PANELS ─────────────────────────────────── */}
+
+          {/* Trade Journal (AI insights from trade history) */}
+          <SectionErrorBoundary sectionName="Trade Journal">
+            <TradeJournalPanel />
+          </SectionErrorBoundary>
+
+          {/* Wyckoff + Supply/Demand Zones */}
+          <SectionErrorBoundary sectionName="Wyckoff & Supply/Demand">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <WyckoffPhasePanel />
+              <SupplyDemandZonesPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Fibonacci Confluence + Market Profile */}
+          <SectionErrorBoundary sectionName="Fibonacci & Market Profile">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <FibConfluencePanel />
+              <MarketProfilePanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Options Flow + Intermarket Analysis */}
+          <SectionErrorBoundary sectionName="Options Flow & Intermarket">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <OptionsFlowPanel />
+              <IntermarketPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Seasonality + Confidence Percentile */}
+          <SectionErrorBoundary sectionName="Seasonality & Signal Rank">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <SeasonalityPanel />
+              <ConfidencePercentileWidget />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Cross-Exchange Monitor + Spread Quality */}
+          <SectionErrorBoundary sectionName="Cross-Exchange & Entry Quality">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <CrossExchangeMonitor />
+              <SpreadQualityWidget />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Recovery Protocol + Delta-Neutral Calculator */}
+          <SectionErrorBoundary sectionName="Recovery Protocol & Delta-Neutral">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <RecoveryProtocolWidget />
+              <DeltaNeutralCalculator />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Portfolio Risk Dashboard */}
+          <SectionErrorBoundary sectionName="Portfolio Risk">
+            <PortfolioRiskDashboard />
+          </SectionErrorBoundary>
+
+          {/* Conviction + Signal Risk */}
+          <SectionErrorBoundary sectionName="Signal Quality Gate">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <ConvictionScoreWidget />
+              <SignalRiskPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Stop Hunt + CVD Divergence */}
+          <SectionErrorBoundary sectionName="Stop Hunt & CVD">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <StopHuntPanel />
+              <CVDDivergenceWidget />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Carry Optimizer + Smart Money Flow */}
+          <SectionErrorBoundary sectionName="Carry & Smart Money">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <CarryOptimizerPanel />
+              <SmartMoneyFlowWidget />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Overnight Gap + Pattern Performance */}
+          <SectionErrorBoundary sectionName="Gap Risk & Pattern Performance">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <OvernightGapWidget />
+              <PatternPerformancePanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Annotated Benchmark */}
+          <SectionErrorBoundary sectionName="Annotated Benchmark">
+            <AnnotatedBenchmarkPanel />
+          </SectionErrorBoundary>
+
+        </div>
       )}
 
       {/* Dashboard tab content */}
@@ -390,18 +629,29 @@ export function Dashboard() {
         </div>
       </SectionErrorBoundary>
 
-      {/* Live Regimes */}
+      {/* Live Regimes + Regime Transition Forecast */}
       <SectionErrorBoundary sectionName="Live Regimes">
         <LiveRegimePanel />
       </SectionErrorBoundary>
+      <SectionErrorBoundary sectionName="Regime Transition Forecast">
+        <RegimeTransitionForecast />
+      </SectionErrorBoundary>
 
-      {/* Market Overview */}
+      {/* MTF Signal Matrix */}
+      <SectionErrorBoundary sectionName="MTF Signal Matrix">
+        <MTFSignalMatrix onAssetSelect={handleSignalNavigate} />
+      </SectionErrorBoundary>
+
+      {/* Market Overview + Microstructure Score */}
       <SectionErrorBoundary sectionName="Market Overview">
         <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <MarketOverviewPanel />
           </div>
-          <MomentumRankPanel />
+          <div className="space-y-4">
+            <MomentumRankPanel />
+            <MarketMicrostructureScore />
+          </div>
         </div>
       </SectionErrorBoundary>
 
@@ -418,17 +668,25 @@ export function Dashboard() {
         <MarketSentimentPanel />
       </SectionErrorBoundary>
 
-      {/* Market Intelligence */}
+      {/* Market Intelligence + Earnings Calendar */}
       <SectionErrorBoundary sectionName="Market Intelligence">
-        <IntelligencePanel />
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <IntelligencePanel />
+          </div>
+          <EarningsCalendarPanel />
+        </div>
       </SectionErrorBoundary>
 
-      {/* Correlation + Funding Rates */}
+      {/* Correlation + Funding Rates + Funding Arbitrage */}
       <SectionErrorBoundary sectionName="Correlation & Funding Rates">
         <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
           <CorrelationPanel />
           <FundingRatePanel />
         </div>
+      </SectionErrorBoundary>
+      <SectionErrorBoundary sectionName="Funding Arbitrage">
+        <FundingArbitragePanel onViewChart={handleSignalNavigate} />
       </SectionErrorBoundary>
 
       {/* Heatmap + Liquidation Heatmap */}
@@ -454,6 +712,11 @@ export function Dashboard() {
             <BotPerformancePanel />
           </div>
         </div>
+      </SectionErrorBoundary>
+
+      {/* Benchmark Comparison */}
+      <SectionErrorBoundary sectionName="Benchmark Comparison">
+        <BenchmarkPanel />
       </SectionErrorBoundary>
 
       {/* Analytics */}
@@ -558,6 +821,10 @@ export function Dashboard() {
               maxDrawdownPct={settings?.max_drawdown_pct ?? 10}
               onResetKillSwitch={handleResetKillSwitch}
             />
+            <RecoveryProtocolWidget />
+            <StreakCircuitBreakerWidget />
+            <DrawdownBudgetWidget />
+            <SpreadQualityWidget />
             <PnLSimulator />
           </div>
         </SectionErrorBoundary>

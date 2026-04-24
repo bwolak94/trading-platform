@@ -289,6 +289,18 @@ export interface AnalysisResult {
       factors: { name: string; weight: number; score: number; label: string }[];
     } | null;
     reason: string | null;
+    suggested_setup?: {
+      bias: string;
+      entry: number;
+      stop_loss: number;
+      take_profit_1: number;
+      take_profit_2: number;
+      take_profit_3: number;
+      risk_reward: number;
+      risk_usd_per_unit: number;
+      readiness: number;
+      conditions: { label: string; met: boolean }[];
+    };
   }[];
   signals: AnalysisResult["strategies"][number]["signal"][];
 }

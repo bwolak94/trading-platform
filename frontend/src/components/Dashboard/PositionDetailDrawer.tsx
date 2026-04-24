@@ -306,7 +306,7 @@ function TradeJournal({
         addTag(tagInput);
         setTagInput("");
       } else if (e.key === "Backspace" && !tagInput && tags.length > 0) {
-        removeTag(tags[tags.length - 1]);
+        removeTag(tags[tags.length - 1]!);
       }
     },
     [tagInput, tags, addTag, removeTag],

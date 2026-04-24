@@ -283,7 +283,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
         time: Math.floor(pt.timestamp / 1000) as Time,
         value: pt.open_interest_value / 1e9,
         color:
-          i === 0 || pt.open_interest_value >= oi_history[i - 1].open_interest_value
+          i === 0 || pt.open_interest_value >= oi_history[i - 1]!.open_interest_value
             ? "#22c55e"
             : "#ef4444",
       }));

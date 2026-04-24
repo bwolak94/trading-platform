@@ -112,6 +112,42 @@ async def explain_signal(
     }
 
 
+@router.get("/history")
+async def get_signal_history(
+    symbol: str = Query(..., description="Asset symbol, e.g. BTCUSDT"),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Return recent signal markers for a symbol — used to overlay arrows on the chart.
+
+    Each marker includes unix timestamp (seconds), direction, entry price,
+    confidence, and strategy name.
+    """
+    asset = symbol.replace("/", "").upper()
+    result = await db.execute(
+        select(Signal)
+        .where(Signal.asset == asset)
+        .order_by(Signal.created_at.desc())
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+
+    markers = []
+    for s in rows:
+        if s.created_at is None or s.entry_price is None:
+            continue
+        markers.append({
+            "time": int(s.created_at.timestamp()),
+            "direction": s.direction,
+            "price": float(s.entry_price),
+            "confidence": float(s.confidence),
+            "strategy": "signal",
+            "symbol": s.asset,
+        })
+
+    return {"signals": markers}
+
+
 @router.get("/{signal_id}", response_model=SignalResponse)
 async def get_signal(
     signal_id: UUID,
