@@ -93,6 +93,28 @@ import OvernightGapWidget from "./OvernightGapWidget";
 import AnnotatedBenchmarkPanel from "./AnnotatedBenchmarkPanel";
 import PatternPerformancePanel from "./PatternPerformancePanel";
 import { AIBotTab } from "./AIBotTab";
+import { KellyCriterionPanel } from "./KellyCriterionPanel";
+import { PortfolioPnLHeatmap } from "./PortfolioPnLHeatmap";
+import { LiquidationCascadePanel } from "./LiquidationCascadePanel";
+import { WatchlistPanel } from "./WatchlistPanel";
+import { MAETrackerPanel } from "./MAETrackerPanel";
+import { SentimentDivergencePanel } from "./SentimentDivergencePanel";
+import { NewsRiskGuard } from "./NewsRiskGuard";
+import { RiskPositionSizerWidget } from "./RiskPositionSizerWidget";
+import { DrawdownWaterfallChart } from "./DrawdownWaterfallChart";
+import { FundingRateHistoryPanel } from "./FundingRateHistoryPanel";
+import { SessionPnLPanel } from "./SessionPnLPanel";
+import { MultiExchangePanel } from "./MultiExchangePanel";
+import { OIMomentumPanel } from "./OIMomentumPanel";
+import { DarkPoolPanel } from "./DarkPoolPanel";
+import { PnLAttributionHeatmap } from "./PnLAttributionHeatmap";
+import { CorrelationShockPanel } from "./CorrelationShockPanel";
+import { PositionJournalPanel } from "./PositionJournalPanel";
+import { PaperLeaderboardPanel } from "./PaperLeaderboardPanel";
+import { SpreadTrackerPanel } from "./SpreadTrackerPanel";
+import { VolatilitySurfacePanel } from "./VolatilitySurfacePanel";
+import { MorningBriefPanel } from "./MorningBriefPanel";
+import { NewsEventBacktesterPanel } from "./NewsEventBacktesterPanel";
 
 /* ── Section Error Boundary ─────────────────────────────────────────── */
 
@@ -246,9 +268,19 @@ export function Dashboard() {
   const signalsQuery = useQuery({ queryKey: ["activeSignals"], queryFn: fetchActiveSignals, refetchInterval: 30_000 });
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
 
+  const MAIN_TABS: ExtendedMainTab[] = ["dashboard", "positioning", "bot", "advanced"];
+
   useHotkeys({
     onTimeframeChange: useCallback((tf: string) => { setChartTf(tf); setMultiChartKey((k) => k + 1); }, []),
     onRefresh: useCallback(() => { void signalsQuery.refetch(); }, [signalsQuery]),
+    onNextTab: useCallback(() => {
+      const next = MAIN_TABS[(MAIN_TABS.indexOf(activeMainTab) + 1) % MAIN_TABS.length];
+      if (next) setActiveMainTab(next);
+    }, [activeMainTab]),
+    onPrevTab: useCallback(() => {
+      const prev = MAIN_TABS[(MAIN_TABS.indexOf(activeMainTab) + MAIN_TABS.length - 1) % MAIN_TABS.length];
+      if (prev) setActiveMainTab(prev);
+    }, [activeMainTab]),
   });
 
   useEffect(() => { if (signalsQuery.data) setActiveSignals(signalsQuery.data.data); }, [signalsQuery.data, setActiveSignals]);
@@ -583,6 +615,95 @@ export function Dashboard() {
             <AnnotatedBenchmarkPanel />
           </SectionErrorBoundary>
 
+          {/* News Risk Guard — macro event proximity banner */}
+          <SectionErrorBoundary sectionName="News Risk Guard">
+            <NewsRiskGuard />
+          </SectionErrorBoundary>
+
+          {/* Sentiment Divergence + Liquidation Cascade */}
+          <SectionErrorBoundary sectionName="Sentiment & Cascade Risk">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <SentimentDivergencePanel />
+              <LiquidationCascadePanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Kelly Criterion + MAE Tracker */}
+          <SectionErrorBoundary sectionName="Kelly & MAE">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <KellyCriterionPanel />
+              <MAETrackerPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Portfolio P&L Heatmap */}
+          <SectionErrorBoundary sectionName="P&L Heatmap">
+            <PortfolioPnLHeatmap />
+          </SectionErrorBoundary>
+
+          {/* Watchlist & Price Alerts */}
+          <SectionErrorBoundary sectionName="Watchlist">
+            <WatchlistPanel />
+          </SectionErrorBoundary>
+
+          {/* Risk Position Sizer + Drawdown Waterfall */}
+          <SectionErrorBoundary sectionName="Position Sizer & Drawdown">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <RiskPositionSizerWidget />
+              <DrawdownWaterfallChart />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Funding Rate History + OI Momentum */}
+          <SectionErrorBoundary sectionName="Funding & OI Momentum">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <FundingRateHistoryPanel />
+              <OIMomentumPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Session P&L + Dark Pool */}
+          <SectionErrorBoundary sectionName="Session P&L & Dark Pool">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <SessionPnLPanel />
+              <DarkPoolPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Multi-Exchange Prices + Volatility Surface */}
+          <SectionErrorBoundary sectionName="Multi-Exchange & Vol Surface">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <MultiExchangePanel />
+              <VolatilitySurfacePanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Correlation Shock + Spread Tracker */}
+          <SectionErrorBoundary sectionName="Correlation Shock & Spreads">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <CorrelationShockPanel />
+              <SpreadTrackerPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* P&L Attribution Heatmap */}
+          <SectionErrorBoundary sectionName="P&L Attribution">
+            <PnLAttributionHeatmap />
+          </SectionErrorBoundary>
+
+          {/* Paper Leaderboard + Position Journal */}
+          <SectionErrorBoundary sectionName="Leaderboard & Journal">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <PaperLeaderboardPanel />
+              <PositionJournalPanel />
+            </div>
+          </SectionErrorBoundary>
+
+          {/* News Event Backtester */}
+          <SectionErrorBoundary sectionName="News Event Backtester">
+            <NewsEventBacktesterPanel />
+          </SectionErrorBoundary>
+
         </div>
       )}
 
@@ -627,6 +748,11 @@ export function Dashboard() {
             )}
           </div>
         </div>
+      </SectionErrorBoundary>
+
+      {/* Morning Brief */}
+      <SectionErrorBoundary sectionName="Morning Brief">
+        <MorningBriefPanel />
       </SectionErrorBoundary>
 
       {/* Live Regimes + Regime Transition Forecast */}

@@ -58,6 +58,10 @@ export interface HotkeyHandlers {
   onToggleSidebar?: () => void;
   /** ? key — show the keyboard shortcuts help overlay */
   onShowHelp?: () => void;
+  /** ArrowRight key — navigate to the next main tab */
+  onNextTab?: () => void;
+  /** ArrowLeft key — navigate to the previous main tab */
+  onPrevTab?: () => void;
   enabled?: boolean;
 }
 
@@ -74,6 +78,8 @@ export function useHotkeys({
   onToggleTheme,
   onToggleSidebar,
   onShowHelp,
+  onNextTab,
+  onPrevTab,
   enabled = true,
 }: HotkeyHandlers): void {
   useEffect(() => {
@@ -106,6 +112,18 @@ export function useHotkeys({
       if (key === "Tab") {
         e.preventDefault();
         onToggleSidebar?.();
+        return;
+      }
+
+      // Arrow keys — navigate main tabs
+      if (key === "ArrowRight") {
+        e.preventDefault();
+        onNextTab?.();
+        return;
+      }
+      if (key === "ArrowLeft") {
+        e.preventDefault();
+        onPrevTab?.();
         return;
       }
 
@@ -177,5 +195,7 @@ export function useHotkeys({
     onToggleTheme,
     onToggleSidebar,
     onShowHelp,
+    onNextTab,
+    onPrevTab,
   ]);
 }

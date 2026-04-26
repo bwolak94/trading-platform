@@ -5,11 +5,17 @@ interface ShortcutItem {
 
 const SHORTCUTS: ShortcutItem[] = [
   { keys: ["⌘", "K"], description: "Open Command Palette" },
+  { keys: ["←", "→"], description: "Switch main tab" },
   { keys: ["1", "–", "6"], description: "Switch timeframe (1m, 5m, 15m, 1h, 4h, 1d)" },
   { keys: ["F"], description: "Toggle fullscreen chart" },
   { keys: ["R"], description: "Refresh data" },
   { keys: ["B"], description: "LONG bias" },
   { keys: ["S"], description: "SHORT bias" },
+  { keys: ["N"], description: "Next signal" },
+  { keys: ["P"], description: "Previous signal" },
+  { keys: ["T"], description: "Toggle theme" },
+  { keys: ["Tab"], description: "Toggle sidebar" },
+  { keys: ["?"], description: "Show this help" },
   { keys: ["Esc"], description: "Close modals / drawers" },
 ];
 

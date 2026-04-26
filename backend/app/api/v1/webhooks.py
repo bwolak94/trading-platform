@@ -83,20 +83,18 @@ async def tradingview_webhook(
     except Exception as exc:
         logger.warning("WebSocket broadcast failed: %s", exc)
 
-    # Send Telegram notification
+    # Send Telegram notification asynchronously via Celery
     try:
-        from app.notifications.telegram_bot import get_telegram_bot
-        bot = get_telegram_bot()
-        if bot:
-            direction_emoji = "\U0001f7e2" if action == "BUY" else "\U0001f534"
-            msg = (
-                f"{direction_emoji} *TradingView Alert*\n"
-                f"{symbol} {action} @ ${price:,.2f}\n"
-                f"_{message}_"
-            )
-            await bot.send_message(msg)
+        from app.tasks import send_telegram_message
+        direction_emoji = "\U0001f7e2" if action == "BUY" else "\U0001f534"
+        msg = (
+            f"{direction_emoji} *TradingView Alert*\n"
+            f"{symbol} {action} @ ${price:,.2f}\n"
+            f"_{message}_"
+        )
+        send_telegram_message.delay(msg)
     except Exception as exc:
-        logger.warning("Telegram notification failed: %s", exc)
+        logger.warning("Telegram task dispatch failed: %s", exc)
 
     return {"status": "received", "symbol": symbol, "action": action}
 
@@ -227,20 +225,17 @@ async def receive_tradingview_pine_alert(
     except Exception as ws_exc:
         logger.warning("WebSocket broadcast failed: %s", ws_exc)
 
-    # Telegram notification
+    # Send Telegram notification asynchronously via Celery
     try:
-        from app.notifications.telegram_bot import get_telegram_bot
-
-        bot = get_telegram_bot()
-        if bot:
-            icon = "\U0001f7e2" if direction == "LONG" else "\U0001f534"
-            text = (
-                f"{icon} <b>TV Pine Signal: {ticker} {direction}</b>\n"
-                f"Confidence: {confidence}% | Strategy: {strategy}\n"
-                f"Entry: ${price:,.4f} | SL: ${stop_loss:,.4f} | TP1: ${tp1:,.4f}"
-            )
-            await bot.send_message(text)
+        from app.tasks import send_telegram_message
+        icon = "\U0001f7e2" if direction == "LONG" else "\U0001f534"
+        text = (
+            f"{icon} <b>TV Pine Signal: {ticker} {direction}</b>\n"
+            f"Confidence: {confidence}% | Strategy: {strategy}\n"
+            f"Entry: ${price:,.4f} | SL: ${stop_loss:,.4f} | TP1: ${tp1:,.4f}"
+        )
+        send_telegram_message.delay(text)
     except Exception as tg_exc:
-        logger.warning("Telegram notification failed: %s", tg_exc)
+        logger.warning("Telegram task dispatch failed: %s", tg_exc)
 
     return {"signal_id": signal_id, "status": "created"}

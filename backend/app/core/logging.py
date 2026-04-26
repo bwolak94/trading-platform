@@ -16,8 +16,20 @@ import json
 import logging
 import os
 import sys
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
+
+# Per-request correlation ID — set by the correlation middleware in main.py
+_request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+class CorrelationIdFilter(logging.Filter):
+    """Injects the current request_id ContextVar into every log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = _request_id_var.get("-")  # type: ignore[attr-defined]
+        return True
 
 
 class JSONFormatter(logging.Formatter):
@@ -33,7 +45,7 @@ class JSONFormatter(logging.Formatter):
         "args", "asctime", "created", "exc_info", "exc_text", "filename",
         "funcName", "levelname", "levelno", "lineno", "message", "module",
         "msecs", "msg", "name", "pathname", "process", "processName",
-        "relativeCreated", "stack_info", "taskName", "thread", "threadName",
+        "relativeCreated", "request_id", "stack_info", "taskName", "thread", "threadName",
     })
 
     def format(self, record: logging.LogRecord) -> str:
@@ -49,6 +61,7 @@ class JSONFormatter(logging.Formatter):
             "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
+            "request_id": getattr(record, "request_id", "-"),
             "message": record.getMessage(),
         }
 
@@ -89,12 +102,18 @@ def _configure_root_logger() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
     handler.setLevel(log_level)
+    handler.addFilter(CorrelationIdFilter())
 
     root.setLevel(log_level)
     root.addHandler(handler)
 
 
 _configured = False
+
+
+def set_request_id(request_id: str) -> None:
+    """Set the correlation ID for the current async context (called by middleware)."""
+    _request_id_var.set(request_id)
 
 
 def get_logger(name: str) -> logging.Logger:

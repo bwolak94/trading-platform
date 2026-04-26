@@ -592,3 +592,73 @@ async def get_invalidation_report(
     except Exception as exc:
         logger.error("invalidation_report error [%s]: %s", symbol, exc)
         return _unavailable(str(exc))
+
+
+# ---------------------------------------------------------------------------
+# News Risk Guard
+# ---------------------------------------------------------------------------
+
+# Known high-impact macro events with approximate UTC schedule.
+# In production these would come from an economic calendar API.
+_MACRO_EVENTS: list[dict[str, Any]] = [
+    {"name": "FOMC Rate Decision", "weekday": 3, "hour": 18, "minute": 0, "impact": "HIGH", "affects": ["BTC", "ETH", "SPY", "DXY"]},
+    {"name": "US CPI Release", "weekday": 1, "hour": 12, "minute": 30, "impact": "HIGH", "affects": ["BTC", "ETH", "GOLD", "DXY"]},
+    {"name": "US NFP (Non-Farm Payrolls)", "weekday": 4, "hour": 12, "minute": 30, "impact": "HIGH", "affects": ["BTC", "ETH", "SPY", "DXY"]},
+    {"name": "US PPI Release", "weekday": 2, "hour": 12, "minute": 30, "impact": "MEDIUM", "affects": ["BTC", "SPY"]},
+    {"name": "Fed Chair Speech", "weekday": 3, "hour": 17, "minute": 0, "impact": "HIGH", "affects": ["BTC", "ETH", "DXY"]},
+    {"name": "US GDP (Advance)", "weekday": 3, "hour": 12, "minute": 30, "impact": "MEDIUM", "affects": ["BTC", "SPY", "DXY"]},
+    {"name": "ECB Rate Decision", "weekday": 3, "hour": 12, "minute": 15, "impact": "MEDIUM", "affects": ["BTC", "ETH", "EUR"]},
+]
+
+_WARN_WINDOW_MINUTES = 120  # warn when event is within 2 hours
+
+
+@router.get("/news-risk-guard", summary="High-impact macro event proximity warning")
+async def get_news_risk_guard() -> dict[str, Any]:
+    """
+    Returns upcoming high-impact macro events within the next 2 hours.
+    Recommends reducing position sizes when a high-impact event is imminent.
+    """
+    import datetime as dt
+
+    now = dt.datetime.utcnow()
+    upcoming: list[dict[str, Any]] = []
+
+    for event in _MACRO_EVENTS:
+        # Find the next occurrence of this event (search next 7 days)
+        for day_offset in range(8):
+            candidate = now + dt.timedelta(days=day_offset)
+            if candidate.weekday() == event["weekday"]:
+                event_dt = candidate.replace(
+                    hour=event["hour"],
+                    minute=event["minute"],
+                    second=0,
+                    microsecond=0,
+                )
+                if event_dt > now:
+                    minutes_away = (event_dt - now).total_seconds() / 60
+                    if minutes_away <= _WARN_WINDOW_MINUTES:
+                        upcoming.append({
+                            "name": event["name"],
+                            "scheduled_at": event_dt.isoformat() + "Z",
+                            "impact": event["impact"],
+                            "affects": event["affects"],
+                            "minutes_away": round(minutes_away),
+                        })
+                    break
+
+    # Sort by proximity
+    upcoming.sort(key=lambda e: e["minutes_away"])
+
+    high_impact = any(e["impact"] == "HIGH" for e in upcoming)
+    warning = (
+        f"High-impact event in {upcoming[0]['minutes_away']}m — consider reducing exposure."
+        if upcoming and high_impact
+        else None
+    )
+
+    return _ok({
+        "high_impact_soon": len(upcoming) > 0 and high_impact,
+        "events": upcoming,
+        "warning_message": warning,
+    })

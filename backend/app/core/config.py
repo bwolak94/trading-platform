@@ -49,14 +49,41 @@ class Settings(BaseSettings):
     )
 
     def validate_production(self) -> list[str]:
-        """Check for insecure defaults in production."""
+        """Check for insecure defaults and missing keys in production."""
         warnings: list[str] = []
         if self.ENVIRONMENT == "production":
             if self.SECRET_KEY == "change-me-in-production":
-                warnings.append("SECRET_KEY is still the default!")
+                warnings.append("SECRET_KEY is still the default — rotate immediately!")
+            if self.ADMIN_PASSWORD == "admin":
+                warnings.append("ADMIN_PASSWORD is still 'admin' — change before go-live!")
             if not self.ANTHROPIC_API_KEY:
-                warnings.append("ANTHROPIC_API_KEY not set")
+                warnings.append("ANTHROPIC_API_KEY not set — AI chat disabled")
+            if not self.BINANCE_API_KEY:
+                warnings.append("BINANCE_API_KEY not set — live market data may be rate-limited")
+            if not self.TELEGRAM_BOT_TOKEN:
+                warnings.append("TELEGRAM_BOT_TOKEN not set — Telegram notifications disabled")
+            if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:
+                warnings.append("DATABASE_URL points to localhost in production")
         return warnings
+
+    def enforce_production_security(self) -> None:
+        """Raise RuntimeError for critical insecure defaults in production.
+
+        Called during application lifespan startup. Non-fatal warnings are
+        returned by ``validate_production()`` and logged; fatal ones are raised
+        here so the container exits cleanly rather than serving with broken config.
+        """
+        if self.ENVIRONMENT != "production":
+            return
+        fatal: list[str] = []
+        if self.SECRET_KEY == "change-me-in-production":
+            fatal.append("SECRET_KEY must be changed before running in production")
+        if self.ADMIN_PASSWORD == "admin":
+            fatal.append("ADMIN_PASSWORD must be changed before running in production")
+        if fatal:
+            raise RuntimeError(
+                "Production security checks failed:\n" + "\n".join(f"  • {f}" for f in fatal)
+            )
 
     def enforce_production_security(self) -> None:
         """Raise RuntimeError if critical settings use default values in production.

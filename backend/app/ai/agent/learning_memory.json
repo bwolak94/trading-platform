@@ -2,36 +2,36 @@
   "stats": {
     "vwap_reversion:INTRADAY": {
       "wins": 20,
-      "losses": 187,
-      "total_pnl": -280.65000000000003,
-      "avg_reward": -1.553,
+      "losses": 253,
+      "total_pnl": -405.67,
+      "avg_reward": -1.658,
       "confidence_adj": 0.3
     },
     "liquidity_sweep:INTRADAY": {
       "wins": 1,
-      "losses": 12,
-      "total_pnl": -14.71,
-      "avg_reward": -1.492,
+      "losses": 13,
+      "total_pnl": -16.21,
+      "avg_reward": -1.528,
       "confidence_adj": 0.3
     },
     "delta_divergence:INTRADAY": {
-      "wins": 9,
-      "losses": 349,
-      "total_pnl": -643.0699999999998,
-      "avg_reward": -1.832,
+      "wins": 10,
+      "losses": 350,
+      "total_pnl": -637.0699999999998,
+      "avg_reward": -1.818,
       "confidence_adj": 0.3
     },
     "trend_following:CONSOLIDATION": {
       "wins": 3,
-      "losses": 60,
-      "total_pnl": -76.13,
-      "avg_reward": -0.581,
+      "losses": 69,
+      "total_pnl": -95.77999999999999,
+      "avg_reward": -0.633,
       "confidence_adj": 0.3
     },
     "mean_reversion:CONSOLIDATION": {
-      "wins": 507,
+      "wins": 557,
       "losses": 39,
-      "total_pnl": 1470.3300000000017,
+      "total_pnl": 1571.0300000000002,
       "avg_reward": 1.781,
       "confidence_adj": 1.5
     },
@@ -86,9 +86,9 @@
     },
     "trend_trader:CONSOLIDATION": {
       "wins": 2,
-      "losses": 32,
-      "total_pnl": -0.7899999999999999,
-      "avg_reward": 0.891,
+      "losses": 38,
+      "total_pnl": -1.5999999999999999,
+      "avg_reward": 1.109,
       "confidence_adj": 0.3
     },
     "volume_breakout:CONSOLIDATION": {
@@ -113,200 +113,137 @@
   },
   "blocked": {
     "delta_divergence:INTRADAY": "2026-04-24T19:00:51.120970+00:00",
-    "vwap_reversion:INTRADAY": "2026-04-25T00:07:32.755211+00:00"
+    "vwap_reversion:INTRADAY": "2026-04-25T23:09:02.878086+00:00",
+    "trend_following:CONSOLIDATION": "2026-04-26T03:47:42.172621+00:00"
   },
   "win_patterns": [
     {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.5,
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": 6.0,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T14:09:46.813118+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.66,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:10:40.399391+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.5,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:10:40.711932+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.62,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:11:28.943426+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.45,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:11:29.242127+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.6,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:12:19.437005+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.5,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:12:19.773841+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.6,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:13:07.978343+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.5,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:13:08.275949+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.63,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:13:55.906924+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.5,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:13:56.235102+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.48,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:16:31.122561+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 2.55,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-21T14:16:31.602077+00:00"
+      "time": "2026-04-25T01:29:37.783076+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 1.71,
+      "pnl": 2.18,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T15:05:54.144738+00:00"
-    },
-    {
-      "strategy": "trend_trader",
-      "regime": "CONSOLIDATION",
-      "pnl": 0.04,
-      "hit": "TP3",
-      "snapshot": {},
-      "time": "2026-04-21T15:26:44.599773+00:00"
+      "time": "2026-04-25T12:40:15.192994+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.25,
+      "pnl": 2.24,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T15:57:10.387316+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 5.82,
-      "hit": "TP3",
-      "snapshot": {},
-      "time": "2026-04-21T19:06:13.669604+00:00"
-    },
-    {
-      "strategy": "smc",
-      "regime": "CONSOLIDATION",
-      "pnl": 5.84,
-      "hit": "TP3",
-      "snapshot": {},
-      "time": "2026-04-21T19:07:14.493230+00:00"
+      "time": "2026-04-25T12:41:18.489599+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 2.31,
+      "pnl": 2.2,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T19:34:33.670857+00:00"
+      "time": "2026-04-25T12:42:26.105896+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 2.63,
+      "pnl": 2.25,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T19:36:39.054800+00:00"
+      "time": "2026-04-25T12:43:36.947194+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 1.89,
+      "pnl": 2.19,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T19:38:26.044035+00:00"
+      "time": "2026-04-25T12:44:45.422209+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 1.49,
+      "pnl": 2.14,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T19:38:32.582148+00:00"
+      "time": "2026-04-25T12:47:20.763256+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.16,
+      "pnl": 1.42,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T19:42:57.271052+00:00"
+      "time": "2026-04-25T12:47:21.963099+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 2.53,
+      "pnl": 2.1,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T19:43:18.052034+00:00"
+      "time": "2026-04-25T12:48:04.855500+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.09,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:48:55.048380+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.76,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:49:38.343467+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.12,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:49:38.665782+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.08,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:50:26.320733+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.79,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:51:11.341369+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.06,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:51:11.642652+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.78,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T12:51:57.652047+00:00"
     },
     {
       "strategy": "mean_reversion",
@@ -314,143 +251,175 @@
       "pnl": 1.8,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T21:44:57.030733+00:00"
+      "time": "2026-04-25T12:52:48.454279+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 2.07,
+      "pnl": 1.81,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-21T23:30:41.035854+00:00"
+      "time": "2026-04-25T12:53:39.151926+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 4.19,
+      "pnl": 1.79,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-22T02:50:21.936520+00:00"
+      "time": "2026-04-25T12:56:35.117074+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 5.96,
+      "pnl": 1.8,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-22T02:50:22.340634+00:00"
+      "time": "2026-04-25T12:58:40.215980+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.28,
+      "pnl": 1.78,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-22T02:50:22.653950+00:00"
+      "time": "2026-04-25T12:59:26.052853+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.52,
+      "pnl": 2.04,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-22T02:50:22.970482+00:00"
+      "time": "2026-04-25T12:59:26.376284+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.46,
+      "pnl": 1.78,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-22T02:50:23.621246+00:00"
-    },
-    {
-      "strategy": "trend_following",
-      "regime": "CONSOLIDATION",
-      "pnl": 6.7,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-22T04:13:20.095948+00:00"
+      "time": "2026-04-25T13:00:24.443811+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 6.52,
+      "pnl": 1.83,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-22T09:14:07.770556+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": 4.09,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-23T02:08:29.397449+00:00"
+      "time": "2026-04-25T13:01:16.311509+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 4.19,
+      "pnl": 1.81,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-23T02:08:50.937486+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": 4.79,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-23T03:09:40.030717+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": 4.15,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-23T03:09:41.764646+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": 5.76,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-23T03:09:42.111816+00:00"
+      "time": "2026-04-25T13:02:02.309946+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 1.77,
+      "pnl": 1.8,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-23T06:18:11.556510+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": 4.73,
-      "hit": "TP2",
-      "snapshot": {},
-      "time": "2026-04-23T09:47:22.852927+00:00"
+      "time": "2026-04-25T13:02:52.565005+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 1.91,
+      "pnl": 1.8,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-23T12:18:33.633052+00:00"
+      "time": "2026-04-25T13:03:45.330759+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 1.91,
+      "pnl": 2.09,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-23T12:19:31.080221+00:00"
+      "time": "2026-04-25T13:03:45.665562+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.81,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:04:36.012663+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.08,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:04:36.310438+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.81,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:05:24.345219+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.06,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:05:24.651892+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.83,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:06:13.907355+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.06,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:06:14.209739+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.73,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:07:00.768583+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.86,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:07:03.569249+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.03,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:07:03.876164+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.74,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:07:56.863439+00:00"
     },
     {
       "strategy": "mean_reversion",
@@ -458,353 +427,177 @@
       "pnl": 1.87,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-23T12:20:29.874968+00:00"
+      "time": "2026-04-25T13:07:57.209820+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.07,
+      "pnl": 2.06,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-23T15:45:05.603365+00:00"
-    },
-    {
-      "strategy": "rsi_scalping",
-      "regime": "CONSOLIDATION",
-      "pnl": 0.04,
-      "hit": "TP3",
-      "snapshot": {},
-      "time": "2026-04-23T18:23:43.372574+00:00"
-    },
-    {
-      "strategy": "rsi_scalping",
-      "regime": "CONSOLIDATION",
-      "pnl": 0.04,
-      "hit": "TP3",
-      "snapshot": {},
-      "time": "2026-04-23T18:25:49.669642+00:00"
+      "time": "2026-04-25T13:07:57.624339+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 2.62,
+      "pnl": 1.73,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-24T06:20:00.894466+00:00"
+      "time": "2026-04-25T13:08:44.038190+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 2.34,
+      "pnl": 1.87,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-24T11:05:25.284348+00:00"
+      "time": "2026-04-25T13:08:44.343612+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.88,
+      "pnl": 2.06,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-24T14:00:52.967279+00:00"
+      "time": "2026-04-25T13:08:44.650372+00:00"
     },
     {
       "strategy": "mean_reversion",
       "regime": "CONSOLIDATION",
-      "pnl": 3.85,
+      "pnl": 1.77,
       "hit": "TP2",
       "snapshot": {},
-      "time": "2026-04-24T15:05:19.649272+00:00"
+      "time": "2026-04-25T13:09:30.738599+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.91,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T13:09:31.056425+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.7,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T19:24:38.242303+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 4.19,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T19:24:39.268210+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.1,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T19:24:39.709999+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 2.21,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T19:24:40.022601+00:00"
+    },
+    {
+      "strategy": "mean_reversion",
+      "regime": "CONSOLIDATION",
+      "pnl": 1.84,
+      "hit": "TP2",
+      "snapshot": {},
+      "time": "2026-04-25T23:44:09.115670+00:00"
     }
   ],
   "loss_patterns": [
     {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.63,
+      "strategy": "trend_following",
+      "regime": "CONSOLIDATION",
+      "pnl": -2.16,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T09:31:29.881139+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.6,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:32:29.846201+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.65,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:33:29.087072+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.62,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:34:29.389341+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.62,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:35:34.270371+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.69,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:36:34.695645+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.83,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:46:50.491365+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.86,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:47:53.707661+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.9,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:48:55.971145+00:00"
+      "time": "2026-04-25T12:34:54.439222+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -2.96,
+      "pnl": -1.54,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T09:51:03.005867+00:00"
+      "time": "2026-04-25T12:35:12.095851+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -2.95,
+      "pnl": -2.19,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T09:52:05.141176+00:00"
+      "time": "2026-04-25T12:35:44.692262+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -2.99,
+      "pnl": -1.69,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T09:53:05.399305+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -2.99,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:54:08.103941+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -3.02,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:55:11.589138+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -3.11,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:56:12.420385+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.85,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T09:59:14.014109+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.91,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:00:17.089318+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.83,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:01:16.489970+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.84,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:02:17.833091+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.77,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:03:19.360789+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.72,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:04:20.851336+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.77,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:05:21.228455+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.81,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:06:22.025401+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.9,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:07:24.024188+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.83,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:08:24.769956+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.78,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:09:27.699017+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -2.83,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T10:10:28.848805+00:00"
+      "time": "2026-04-25T12:35:45.282211+00:00"
     },
     {
       "strategy": "trend_following",
       "regime": "CONSOLIDATION",
-      "pnl": 0.0,
+      "pnl": -2.21,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T10:25:32.984370+00:00"
+      "time": "2026-04-25T12:36:04.029576+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.21,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:36:46.670702+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.85,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:36:47.012168+00:00"
     },
     {
       "strategy": "trend_following",
       "regime": "CONSOLIDATION",
-      "pnl": -0.08,
+      "pnl": -2.22,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T10:46:33.203401+00:00"
+      "time": "2026-04-25T12:37:11.493332+00:00"
     },
     {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -1.55,
+      "strategy": "trend_following",
+      "regime": "CONSOLIDATION",
+      "pnl": -2.17,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T11:30:01.746943+00:00"
-    },
-    {
-      "strategy": "delta_divergence",
-      "regime": "INTRADAY",
-      "pnl": -1.54,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T13:00:51.118888+00:00"
+      "time": "2026-04-25T12:39:04.382630+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.46,
+      "pnl": -2.16,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:01:35.083231+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.54,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T13:03:35.722710+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.54,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T13:03:46.721075+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.62,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T13:05:00.638241+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.62,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T13:05:54.055322+00:00"
+      "time": "2026-04-25T12:39:06.668522+00:00"
     },
     {
       "strategy": "vwap_reversion",
@@ -812,7 +605,15 @@
       "pnl": -1.69,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:06:57.984479+00:00"
+      "time": "2026-04-25T12:39:09.679422+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.19,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:40:07.916875+00:00"
     },
     {
       "strategy": "vwap_reversion",
@@ -820,7 +621,15 @@
       "pnl": -1.77,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:08:01.651607+00:00"
+      "time": "2026-04-25T12:40:08.230028+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.22,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:41:04.101967+00:00"
     },
     {
       "strategy": "vwap_reversion",
@@ -828,7 +637,47 @@
       "pnl": -1.77,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:09:03.927309+00:00"
+      "time": "2026-04-25T12:41:04.729355+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.21,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:42:02.362605+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.69,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:42:02.754343+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.21,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:43:02.934400+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.69,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:43:03.278444+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.23,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:44:02.985096+00:00"
     },
     {
       "strategy": "vwap_reversion",
@@ -836,15 +685,39 @@
       "pnl": -1.77,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:10:07.487914+00:00"
+      "time": "2026-04-25T12:44:03.287727+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.38,
+      "pnl": -2.17,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:11:10.510363+00:00"
+      "time": "2026-04-25T12:45:03.433162+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.69,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:45:03.740397+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.13,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:47:21.669134+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.69,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:47:23.360885+00:00"
     },
     {
       "strategy": "vwap_reversion",
@@ -852,71 +725,199 @@
       "pnl": -1.62,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:12:14.239405+00:00"
+      "time": "2026-04-25T12:48:18.803917+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.69,
+      "pnl": -1.62,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:13:17.536847+00:00"
+      "time": "2026-04-25T12:49:08.316142+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.69,
+      "pnl": -1.62,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T13:14:20.555698+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.54,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-24T13:15:24.841469+00:00"
+      "time": "2026-04-25T12:56:36.763564+00:00"
     },
     {
       "strategy": "trend_trader",
       "regime": "CONSOLIDATION",
       "pnl": 0.0,
+      "hit": "TP3",
+      "snapshot": {},
+      "time": "2026-04-25T12:56:38.459812+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.69,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:58:43.341372+00:00"
+    },
+    {
+      "strategy": "trend_trader",
+      "regime": "CONSOLIDATION",
+      "pnl": -0.26,
+      "hit": "TP3",
+      "snapshot": {},
+      "time": "2026-04-25T12:59:26.976545+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.62,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T12:59:29.967110+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.77,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:00:23.853985+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.69,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:01:11.287033+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -1.77,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:01:57.156346+00:00"
+    },
+    {
+      "strategy": "trend_trader",
+      "regime": "CONSOLIDATION",
+      "pnl": 0.0,
+      "hit": "TP3",
+      "snapshot": {},
+      "time": "2026-04-25T13:02:03.280139+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.0,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:02:42.126062+00:00"
+    },
+    {
+      "strategy": "trend_trader",
+      "regime": "CONSOLIDATION",
+      "pnl": -0.26,
+      "hit": "TP3",
+      "snapshot": {},
+      "time": "2026-04-25T13:02:52.857119+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.0,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:03:27.477693+00:00"
+    },
+    {
+      "strategy": "trend_trader",
+      "regime": "CONSOLIDATION",
+      "pnl": -0.26,
+      "hit": "TP3",
+      "snapshot": {},
+      "time": "2026-04-25T13:03:46.253477+00:00"
+    },
+    {
+      "strategy": "trend_trader",
+      "regime": "CONSOLIDATION",
+      "pnl": -0.03,
       "hit": "BE",
       "snapshot": {},
-      "time": "2026-04-24T14:39:20.557770+00:00"
+      "time": "2026-04-25T13:04:02.481258+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.54,
+      "pnl": -2.23,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T16:04:06.597941+00:00"
+      "time": "2026-04-25T13:04:20.672122+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.38,
+      "pnl": -2.15,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T16:04:17.755698+00:00"
+      "time": "2026-04-25T13:05:12.947814+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.54,
+      "pnl": -2.08,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T16:06:50.654915+00:00"
+      "time": "2026-04-25T13:06:06.785704+00:00"
     },
     {
       "strategy": "vwap_reversion",
       "regime": "INTRADAY",
-      "pnl": -1.54,
+      "pnl": -2.08,
       "hit": "SL",
       "snapshot": {},
-      "time": "2026-04-24T16:07:32.755132+00:00"
+      "time": "2026-04-25T13:07:00.938102+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.08,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:08:02.766190+00:00"
+    },
+    {
+      "strategy": "vwap_reversion",
+      "regime": "INTRADAY",
+      "pnl": -2.15,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T13:09:02.877855+00:00"
+    },
+    {
+      "strategy": "trend_following",
+      "regime": "CONSOLIDATION",
+      "pnl": -2.25,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T19:26:52.136107+00:00"
+    },
+    {
+      "strategy": "trend_following",
+      "regime": "CONSOLIDATION",
+      "pnl": -2.31,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T20:12:30.804209+00:00"
+    },
+    {
+      "strategy": "trend_following",
+      "regime": "CONSOLIDATION",
+      "pnl": -2.05,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-25T21:47:42.171699+00:00"
     }
   ]
 }

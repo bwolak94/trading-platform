@@ -1,8 +1,10 @@
 """Celery task monitoring and system observability endpoints."""
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter
+from pydantic import BaseModel
 
 from app.core.logging import get_logger
 
@@ -94,3 +96,43 @@ async def get_detailed_health() -> dict[str, Any]:
         "status": "ok",
         "subsystems": subsystems,
     }
+
+
+class FrontendError(BaseModel):
+    """Single frontend error event."""
+
+    message: str
+    stack: str | None = None
+    url: str = ""
+    component: str | None = None
+    extra: dict[str, Any] | None = None
+
+
+class FrontendErrorBatch(BaseModel):
+    """Batch of frontend errors from the browser."""
+
+    errors: list[FrontendError]
+
+
+@router.post("/monitoring/frontend-errors")
+async def record_frontend_errors(body: FrontendErrorBatch) -> dict[str, int]:
+    """Receive and log browser-side JavaScript errors.
+
+    The frontend installs window.onerror and unhandledrejection handlers that
+    batch errors and POST them here, making JS errors visible in the unified
+    server log stream.
+
+    Returns:
+        Dict with ``logged`` count.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    for err in body.errors:
+        logger.error(
+            "[FRONTEND] %s | url=%s component=%s | %s | ts=%s",
+            err.message,
+            err.url,
+            err.component or "unknown",
+            (err.stack or "").split("\n")[0],
+            now,
+        )
+    return {"logged": len(body.errors)}

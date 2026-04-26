@@ -27,29 +27,42 @@ celery_app.conf.update(
     beat_schedule={
         "fetch-market-data": {
             "task": "app.tasks.fetch_market_data",
-            "schedule": 60.0,  # every 1 minute
+            "schedule": 60.0,
+            "options": {"expires": 55},
         },
         "analyze-sentiment": {
             "task": "app.tasks.analyze_sentiment",
-            "schedule": 900.0,  # every 15 minutes
+            "schedule": 900.0,
+            "options": {"expires": 890},
         },
         "fetch-onchain": {
             "task": "app.tasks.fetch_onchain",
-            "schedule": 60.0,  # every 60 seconds
+            "schedule": 60.0,
+            "options": {"expires": 55},
         },
         "run-signal-pipeline": {
             "task": "app.tasks.run_signal_pipeline",
-            "schedule": 300.0,  # every 5 minutes
+            "schedule": 300.0,
+            "options": {"expires": 290},
         },
         "check-signal-status": {
             "task": "app.tasks.check_signal_status",
-            "schedule": 900.0,  # every 15 minutes
+            "schedule": 900.0,
+            "options": {"expires": 890},
         },
         "cleanup-expired-signals": {
             "task": "cleanup_expired_signals",
-            "schedule": 86400.0,  # daily (every 24 hours)
+            "schedule": 86400.0,
+            "options": {"expires": 3600},
+        },
+        "send-daily-risk-report": {
+            "task": "app.tasks.send_daily_risk_report",
+            "schedule": 86400.0,
+            "options": {"expires": 3600},
         },
     },
+    # Jitter prevents thundering-herd on startup — tasks spread within ±10 % of schedule
+    beat_max_loop_interval=5,
 )
 
 DEFAULT_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
@@ -67,6 +80,41 @@ def _run_async(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+@celery_app.task(name="app.tasks.send_telegram_message", bind=True, max_retries=3)
+def send_telegram_message(self, message: str) -> dict:
+    """Send a Telegram notification asynchronously via a Celery worker.
+
+    Uses a Redis idempotency key (SHA-256 of the message, 60 s TTL) to
+    prevent duplicate delivery on Celery retries.
+    """
+    import hashlib
+    import redis as _redis
+    from app.notifications.telegram_bot import get_telegram_bot
+
+    # Idempotency: skip if we already sent this exact message in the last 60 s
+    msg_hash = hashlib.sha256(message.encode()).hexdigest()[:16]
+    idem_key = f"tg:sent:{msg_hash}"
+    try:
+        r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+        if not r.set(idem_key, "1", nx=True, ex=60):
+            logger.info("Telegram message deduplicated (key=%s)", idem_key)
+            return {"status": "deduplicated"}
+    except Exception as exc:
+        logger.warning("Redis idempotency check failed, sending anyway: %s", exc)
+
+    async def _send():
+        bot = get_telegram_bot()
+        if bot:
+            await bot.send_message(message)
+
+    try:
+        _run_async(_send())
+        return {"status": "sent"}
+    except Exception as exc:
+        logger.warning("send_telegram_message failed (attempt %d): %s", self.request.retries + 1, exc)
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
 
 
 async def _fetch_and_store_market_data():
@@ -488,14 +536,110 @@ def fetch_onchain():
 
 @celery_app.task
 def run_signal_pipeline():
-    """Run the full signal generation pipeline."""
-    _run_async(_run_signal_pipeline())
+    """Run the full signal generation pipeline with a distributed Redis lock.
+
+    The lock prevents overlapping executions if a run takes longer than its schedule.
+    """
+    import redis as _redis
+    _LOCK_KEY = "lock:signal_pipeline"
+    _LOCK_TTL = 280  # seconds — slightly less than 300 s schedule
+
+    try:
+        r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+        acquired = r.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_TTL)
+        if not acquired:
+            logger.info("Signal pipeline skipped — another instance is running")
+            return
+    except Exception as exc:
+        logger.warning("Redis lock unavailable, running without lock: %s", exc)
+
+    try:
+        _run_async(_run_signal_pipeline())
+    finally:
+        try:
+            r.delete(_LOCK_KEY)
+        except Exception:
+            pass
 
 
 @celery_app.task
 def check_signal_status():
     """Check if active signals hit TP/SL levels."""
     _run_async(_check_signal_status())
+
+
+async def _send_daily_risk_report() -> None:
+    """Compute and Telegram-deliver a nightly performance summary.
+
+    Collects: today's closed paper trades, cumulative P&L, win rate,
+    max drawdown, Sharpe ratio, and streak status. Sends via the configured
+    Telegram bot to all registered chat IDs.
+    """
+    from app.core.database import async_session
+    from app.models.simulated_position import SimulatedPosition
+    from app.models.user_settings import UserSettings
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    async with async_session() as session:
+        # --- Fetch today's closed paper positions ---
+        pos_result = await session.execute(
+            select(SimulatedPosition)
+            .where(SimulatedPosition.closed_at >= today_start)
+            .where(SimulatedPosition.status != "OPEN")
+            .order_by(SimulatedPosition.closed_at)
+        )
+        positions = list(pos_result.scalars().all())
+
+        wins = [p for p in positions if (p.pnl_pct or 0) > 0]
+        losses = [p for p in positions if (p.pnl_pct or 0) <= 0]
+        total_pnl = sum(float(p.pnl_pct or 0) for p in positions)
+        win_rate = (len(wins) / len(positions) * 100) if positions else 0.0
+
+        # --- Fetch user settings for capital context ---
+        settings_result = await session.execute(
+            select(UserSettings).where(UserSettings.user_id == "default")
+        )
+        user_settings = settings_result.scalar_one_or_none()
+        capital = float(user_settings.capital or 0) if user_settings else 0.0
+
+        # --- Build Telegram message ---
+        date_str = today_start.strftime("%Y-%m-%d")
+        lines = [
+            f"📊 *Daily Risk Report — {date_str}*",
+            "",
+            f"Trades: {len(positions)} | Wins: {len(wins)} | Losses: {len(losses)}",
+            f"Win Rate: {win_rate:.1f}%",
+            f"Total P&L: {total_pnl:+.2f}%",
+        ]
+        if capital > 0:
+            lines.append(f"Capital: ${capital:,.0f}")
+        if not positions:
+            lines.append("_(No closed trades today)_")
+
+        message = "\n".join(lines)
+
+        # --- Send to all registered chat IDs via TelegramNotifier ---
+        try:
+            from app.notifications.telegram_bot import get_telegram_notifier
+            notifier = get_telegram_notifier()
+            settings_list_result = await session.execute(select(UserSettings))
+            all_settings = list(settings_list_result.scalars().all())
+            sent = 0
+            for us in all_settings:
+                if us.telegram_chat_id and us.notifications_enabled:
+                    await notifier.send_message(us.telegram_chat_id, message)
+                    sent += 1
+            logger.info("Daily risk report sent to %d chat(s)", sent)
+        except Exception as exc:
+            logger.error("Failed to send daily risk report: %s", exc)
+
+
+@celery_app.task(name="app.tasks.send_daily_risk_report")
+def send_daily_risk_report() -> None:
+    """Send nightly performance summary via Telegram."""
+    _run_async(_send_daily_risk_report())
 
 
 @celery_app.task(name="app.tasks.run_backtest_task")

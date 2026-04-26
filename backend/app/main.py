@@ -1,6 +1,9 @@
 """FastAPI application entry point."""
 
+import asyncio
+import random
 import time as _time
+import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlencode
@@ -8,6 +11,7 @@ from urllib.parse import parse_qs, urlencode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -29,6 +33,11 @@ from app.ai.signals.liquidation_cascade import router as liquidation_cascade_rou
 from app.ai.risk.drawdown_budget import router as drawdown_budget_router
 from app.api.v1.features import router as features_router
 from app.api.v1.features2 import router as features2_router
+from app.api.v1.multi_exchange import router as multi_exchange_router
+from app.api.v1.oi_momentum import router as oi_momentum_router
+from app.api.v1.dark_pool import router as dark_pool_router
+from app.api.v1.ai_commentary import router as ai_commentary_router
+from app.api.v1.news_backtester import router as news_backtester_router
 from app.api.v1.futures_testnet import router as futures_testnet_router
 from app.core.config import settings as app_settings
 from app.core.exceptions import (
@@ -38,7 +47,7 @@ from app.core.exceptions import (
     RateLimitError,
     TradingPlatformError,
 )
-from app.core.logging import get_logger
+from app.core.logging import get_logger, set_request_id
 from app.core.websocket import manager
 
 logger = get_logger(__name__)
@@ -246,6 +255,8 @@ if app_settings.ENVIRONMENT == "production" and "*" in _cors_origins:
     )
     _cors_origins = ["http://localhost:5173", "http://localhost:3000"]
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -253,6 +264,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Correlation ID middleware
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Attach a per-request correlation ID to every log line and response header.
+
+    Reads X-Request-ID from the incoming request (e.g. set by a proxy/frontend),
+    or generates a new UUID4. The ID is stored in a ContextVar so all loggers
+    in the same async context automatically include it.
+    """
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    set_request_id(request_id)
+    response = await call_next(request)
+    response.headers["x-request-id"] = request_id
+    return response
 
 
 # Rate limiting middleware
@@ -336,23 +363,46 @@ def _mask_body(body: dict[str, object]) -> dict[str, object]:
     }
 
 
-# Request logging middleware
+_API_VERSION = "0.1.0"
+
+# Paths that get a hard 30 s server-side timeout — prevents ML endpoints from hanging
+_TIMEOUT_PATHS = {"/api/v1/analyze/run", "/api/v1/chat", "/api/v1/backtest/run"}
+
+# Paths sampled at 1 % to keep logs quiet
+_SAMPLED_PATHS = {"/api/v1/health", "/api/v1/status"}
+
+
+# Request logging + version header + timeout middleware
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
-    """Log request method, path, status, and duration for non-health endpoints.
-
-    Sensitive headers, query parameters, and body fields are masked before logging.
-    """
+    """Log requests, attach X-API-Version header, enforce timeouts on expensive paths."""
     start = _time.time()
-    response = await call_next(request)
+    path = request.url.path
+
+    # Per-endpoint timeout for expensive ML routes
+    if path in _TIMEOUT_PATHS:
+        try:
+            response = await asyncio.wait_for(call_next(request), timeout=30.0)
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                status_code=504,
+                content={"error": "gateway_timeout", "detail": "Request exceeded 30 s timeout"},
+            )
+    else:
+        response = await call_next(request)
+
     duration = round((_time.time() - start) * 1000, 1)
-    if not request.url.path.startswith("/api/v1/health"):
+
+    # Attach version header to every response
+    response.headers["x-api-version"] = _API_VERSION
+
+    # Log at 1 % for sampled paths, always for the rest (skip health entirely at 99 %)
+    if path not in _SAMPLED_PATHS or random.random() < 0.01:
         masked_qs = _mask_query_string(request.url.query or "")
-        safe_path = f"{request.url.path}?{masked_qs}" if masked_qs else request.url.path
-        masked_hdrs = _mask_headers(dict(request.headers))
+        safe_path = f"{path}?{masked_qs}" if masked_qs else path
         logger.info(
-            '{"method":"%s","path":"%s","status":%d,"duration_ms":%.1f,"headers":%s}',
-            request.method, safe_path, response.status_code, duration, masked_hdrs,
+            '{"method":"%s","path":"%s","status":%d,"duration_ms":%.1f}',
+            request.method, safe_path, response.status_code, duration,
         )
     return response
 
@@ -441,6 +491,11 @@ app.include_router(drawdown_budget_router, prefix="/api/v1")
 app.include_router(features_router, prefix="/api/v1")
 app.include_router(features2_router, prefix="/api/v1")
 app.include_router(futures_testnet_router, prefix="/api/v1")
+app.include_router(multi_exchange_router, prefix="/api/v1")
+app.include_router(oi_momentum_router, prefix="/api/v1")
+app.include_router(dark_pool_router, prefix="/api/v1")
+app.include_router(ai_commentary_router, prefix="/api/v1")
+app.include_router(news_backtester_router, prefix="/api/v1")
 
 
 # Health & status
