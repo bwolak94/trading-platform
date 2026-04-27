@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Component, useCallback, useEffect, useState } from "react";
-import type { ErrorInfo, ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { ErrorBoundary } from "../ui/ErrorBoundary";
 import {
   fetchActiveSignals,
   fetchSettings,
@@ -115,61 +116,68 @@ import { SpreadTrackerPanel } from "./SpreadTrackerPanel";
 import { VolatilitySurfacePanel } from "./VolatilitySurfacePanel";
 import { MorningBriefPanel } from "./MorningBriefPanel";
 import { NewsEventBacktesterPanel } from "./NewsEventBacktesterPanel";
+// A5: Heavy panels are lazy-loaded to reduce initial JS parse time.
+// They are code-split into separate chunks and only downloaded on first render.
+const MultiAssetCorrelationMatrix = lazy(() =>
+  import("./MultiAssetCorrelationMatrix").then((m) => ({ default: m.MultiAssetCorrelationMatrix })),
+);
+const LiquidityDepthHeatmap = lazy(() =>
+  import("./LiquidityDepthHeatmap").then((m) => ({ default: m.LiquidityDepthHeatmap })),
+);
+const StrategyABBacktester = lazy(() =>
+  import("./StrategyABBacktester").then((m) => ({ default: m.StrategyABBacktester })),
+);
 
-/* ── Section Error Boundary ─────────────────────────────────────────── */
+// Additional heavy panels — code-split to reduce initial bundle parse time
+const RegimeTransitionTimeline = lazy(() =>
+  import("./RegimeTransitionTimeline").then((m) => ({ default: m.RegimeTransitionTimeline })),
+);
+const SmartStopLossOptimizer = lazy(() =>
+  import("./SmartStopLossOptimizer").then((m) => ({ default: m.SmartStopLossOptimizer })),
+);
+const TradeSetupScreener = lazy(() =>
+  import("./TradeSetupScreener").then((m) => ({ default: m.TradeSetupScreener })),
+);
+const MacroCountdownWidget = lazy(() =>
+  import("./MacroCountdownWidget").then((m) => ({ default: m.MacroCountdownWidget })),
+);
+const RiskOfRuinMeter = lazy(() =>
+  import("./RiskOfRuinMeter").then((m) => ({ default: m.RiskOfRuinMeter })),
+);
+const SignalReplayMode = lazy(() =>
+  import("./SignalReplayMode").then((m) => ({ default: m.SignalReplayMode })),
+);
+const WalkForwardOptimizationUI = lazy(() => import("./WalkForwardOptimizationUI"));
+const TickByTickReplay = lazy(() => import("./TickByTickReplay"));
+const PaperVsLiveComparison = lazy(() => import("./PaperVsLiveComparison"));
+const SharpeDecompositionPanel = lazy(() => import("./SharpeDecompositionPanel"));
+const SignalConfidenceCalibrationCurve = lazy(() => import("./SignalConfidenceCalibrationCurve"));
+const SignalForwardTestTracker = lazy(() => import("./SignalForwardTestTracker"));
+const SignalInvalidationTracker = lazy(() => import("./SignalInvalidationTracker"));
+const ParameterSensitivityHeatmap = lazy(() => import("./ParameterSensitivityHeatmap"));
+const AlertWebhookDeliveryLog = lazy(() => import("./AlertWebhookDeliveryLog"));
+const ExpectedValueLedger = lazy(() => import("./ExpectedValueLedger"));
+const MarketImpactCalculator = lazy(() => import("./MarketImpactCalculator"));
+const MultiTimeframeSignalConsensus = lazy(() => import("./MultiTimeframeSignalConsensus"));
+const BreakevenStopPanel = lazy(() => import("./BreakevenStopPanel"));
+const TimeStopPanel = lazy(() => import("./TimeStopPanel"));
+const RiskBudgetDashboard = lazy(() => import("./RiskBudgetDashboard"));
+import { useNotificationBadge } from "../../hooks/useNotificationBadge";
 
-interface SectionErrorBoundaryProps {
+/* ── Section wrapper uses the shared ErrorBoundary from ui/ ─────────── */
+
+function SectionErrorBoundary({
+  sectionName,
+  children,
+}: {
   sectionName: string;
   children: ReactNode;
-}
-
-interface SectionErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class SectionErrorBoundary extends Component<SectionErrorBoundaryProps, SectionErrorBoundaryState> {
-  constructor(props: SectionErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error): SectionErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error(`[SectionErrorBoundary] ${this.props.sectionName}:`, error, info.componentStack);
-  }
-
-  handleRetry = (): void => {
-    this.setState({ hasError: false, error: null });
-  };
-
-  render(): ReactNode {
-    if (this.state.hasError) {
-      return (
-        <div className="rounded-lg border border-bearish/30 bg-bearish/5 p-6 text-center" role="alert">
-          <p className="mb-1 text-sm font-medium text-bearish">
-            {this.props.sectionName} failed to render
-          </p>
-          <p className="mb-3 text-xs text-gray-400">
-            {this.state.error?.message ?? "An unexpected error occurred."}
-          </p>
-          <button
-            type="button"
-            onClick={this.handleRetry}
-            className="rounded border border-border bg-surface px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-accent hover:text-white"
-            aria-label={`Retry loading ${this.props.sectionName}`}
-          >
-            Retry
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
+}) {
+  return (
+    <ErrorBoundary componentName={sectionName}>
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 /* ── Dashboard ─────────────────────────────────────────────────────── */
@@ -265,8 +273,48 @@ export function Dashboard() {
   };
   const chartAssetDisplay = assetMap[chartAsset] ?? chartAsset;
 
-  const signalsQuery = useQuery({ queryKey: ["activeSignals"], queryFn: fetchActiveSignals, refetchInterval: 30_000 });
-  const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  // Global asset filter — filters signal list and propagates to panels that support it
+  const [globalAssetFilter, setGlobalAssetFilter] = useState("");
+
+  const signalsQuery = useQuery({
+    queryKey: ["activeSignals"],
+    queryFn: fetchActiveSignals,
+    refetchInterval: 30_000,
+    placeholderData: (prev) => prev,
+  });
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: fetchSettings,
+    placeholderData: (prev) => prev,
+  });
+
+  // Notification badge: count of new (< 5 min old) active signals
+  const newSignalCount = activeSignals.filter((s) => {
+    const age = Date.now() - new Date(s.created_at).getTime();
+    return age < 5 * 60 * 1000 && s.status === "ACTIVE";
+  }).length;
+  useNotificationBadge(newSignalCount);
+
+  // Deduplication: flag signals sharing the same asset+direction within 15 min
+  const dedupKeys = new Set<string>();
+  const signalDupMap = new Map<string, boolean>();
+  const sortedByTime = [...activeSignals].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  for (const sig of sortedByTime) {
+    const ageMin = (Date.now() - new Date(sig.created_at).getTime()) / 60000;
+    const key = `${sig.asset}:${sig.direction}`;
+    if (ageMin < 15 && dedupKeys.has(key)) {
+      signalDupMap.set(sig.id, true);
+    } else {
+      dedupKeys.add(key);
+    }
+  }
+
+  // Filtered signals based on global asset filter
+  const filteredSignals = globalAssetFilter
+    ? activeSignals.filter((s) => s.asset.toLowerCase().includes(globalAssetFilter.toLowerCase()))
+    : activeSignals;
 
   const MAIN_TABS: ExtendedMainTab[] = ["dashboard", "positioning", "bot", "advanced"];
 
@@ -405,9 +453,46 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Market Mode Selector */}
-      <div className="border-b border-border px-4 py-3">
-        <MarketModeSelector />
+      {/* G2: ARIA live region for kill-switch / regime-change alerts — screen readers
+           announce these immediately when they appear */}
+      <div aria-live="assertive" aria-atomic="true" className="sr-only">
+        {systemPaused && "Alert: Kill switch active. Trading is paused due to drawdown limit."}
+      </div>
+
+      {/* Macro Countdown — always visible strip */}
+      <div className="border-b border-border px-4 py-2">
+        <MacroCountdownWidget />
+      </div>
+
+      {/* Market Mode Selector + Global Asset Filter */}
+      <div className="border-b border-border px-4 py-3 flex items-center gap-3">
+        <div className="flex-1">
+          <MarketModeSelector />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="global-asset-filter" className="text-[10px] text-gray-500 shrink-0">
+            Filter asset:
+          </label>
+          <input
+            id="global-asset-filter"
+            type="text"
+            value={globalAssetFilter}
+            onChange={(e) => setGlobalAssetFilter(e.target.value)}
+            placeholder="BTC, ETH…"
+            className="w-24 rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent"
+            aria-label="Filter signals by asset"
+          />
+          {globalAssetFilter && (
+            <button
+              type="button"
+              onClick={() => setGlobalAssetFilter("")}
+              className="text-gray-500 hover:text-gray-300 text-xs"
+              aria-label="Clear asset filter"
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main tab navigation */}
@@ -704,6 +789,50 @@ export function Dashboard() {
             <NewsEventBacktesterPanel />
           </SectionErrorBoundary>
 
+          {/* ── NEW FEATURES FROM IMPROVEMENTS BATCH ────────────── */}
+
+          {/* Multi-Asset Correlation Matrix — A5: lazy-loaded */}
+          <SectionErrorBoundary sectionName="Correlation Matrix">
+            <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-surface" />}>
+              <MultiAssetCorrelationMatrix />
+            </Suspense>
+          </SectionErrorBoundary>
+
+          {/* Regime Transition Timeline */}
+          <SectionErrorBoundary sectionName="Regime Timeline">
+            <RegimeTransitionTimeline />
+          </SectionErrorBoundary>
+
+          {/* Signal Replay Mode */}
+          <SectionErrorBoundary sectionName="Signal Replay">
+            <SignalReplayMode />
+          </SectionErrorBoundary>
+
+          {/* Smart Stop Loss Optimizer + Strategy A/B Backtester — A5: heavy panels lazy-loaded */}
+          <SectionErrorBoundary sectionName="Optimization Suite">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <SmartStopLossOptimizer />
+              <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-surface" />}>
+                <StrategyABBacktester />
+              </Suspense>
+            </div>
+          </SectionErrorBoundary>
+
+          {/* Trade Setup Screener */}
+          <SectionErrorBoundary sectionName="Trade Screener">
+            <TradeSetupScreener />
+          </SectionErrorBoundary>
+
+          {/* Risk of Ruin Meter + Liquidity Depth Heatmap — A5: heatmap lazy-loaded */}
+          <SectionErrorBoundary sectionName="Risk & Liquidity">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+              <RiskOfRuinMeter currentDrawdownPct={drawdownPct} />
+              <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-surface" />}>
+                <LiquidityDepthHeatmap />
+              </Suspense>
+            </div>
+          </SectionErrorBoundary>
+
         </div>
       )}
 
@@ -929,13 +1058,21 @@ export function Dashboard() {
                 </div>
               )}
             </div>
-            {activeSignals.length === 0 && (
+            {filteredSignals.length === 0 && (
               <div className="rounded-lg border border-border bg-surface p-8 text-center text-gray-500">
-                No active signals — run AI Analysis above to generate signals
+                {globalAssetFilter
+                  ? `No signals matching "${globalAssetFilter}"`
+                  : "No active signals — run AI Analysis above to generate signals"}
               </div>
             )}
-            {activeSignals.sort((a, b) => b.confidence - a.confidence).map((signal, i) => (
-              <SignalCard key={signal.id} signal={signal} isNew={i === 0} onNavigate={handleSignalNavigate} />
+            {[...filteredSignals].sort((a, b) => b.confidence - a.confidence).map((signal, i) => (
+              <SignalCard
+                key={signal.id}
+                signal={signal}
+                isNew={i === 0}
+                isDuplicate={signalDupMap.get(signal.id) === true}
+                onNavigate={handleSignalNavigate}
+              />
             ))}
           </div>
         </SectionErrorBoundary>

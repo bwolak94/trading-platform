@@ -3,11 +3,38 @@ import { Component, type ReactNode } from "react";
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  /** Optional component name for structured error reporting */
+  componentName?: string;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+}
+
+/** F2: Report errors to the backend monitoring endpoint for server-side logging. */
+function reportErrorToBackend(error: Error, componentName?: string): void {
+  try {
+    fetch("/api/v1/monitoring/frontend-errors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        errors: [
+          {
+            message: error.message,
+            stack: error.stack ?? null,
+            url: window.location.href,
+            component: componentName ?? null,
+          },
+        ],
+      }),
+      keepalive: true,
+    }).catch(() => {
+      // Non-fatal — don't surface reporting failures to the user
+    });
+  } catch {
+    // ignore
+  }
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -19,6 +46,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("ErrorBoundary caught:", error, errorInfo);
+    // F2: Send error to backend for server-side aggregation
+    reportErrorToBackend(error, this.props.componentName);
   }
 
   render() {

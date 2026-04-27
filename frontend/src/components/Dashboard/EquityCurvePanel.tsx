@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   LineChart,
@@ -45,11 +46,19 @@ export function EquityCurvePanel() {
 
   const curve = data?.equity_curve ?? [];
 
-  const lastPoint = curve.length > 0 ? curve[curve.length - 1] : undefined;
-  const currentEquity = lastPoint?.equity ?? 100;
-  const isProfit = currentEquity >= 100;
-  const peakEquity = curve.length > 0 ? Math.max(...curve.map((p) => p.equity)) : 100;
-  const drawdown = peakEquity > 0 ? ((peakEquity - currentEquity) / peakEquity) * 100 : 0;
+  // A6: Memoize expensive series calculations keyed on data length + last timestamp
+  const { currentEquity, isProfit, peakEquity, drawdown } = useMemo(() => {
+    const last = curve.length > 0 ? curve[curve.length - 1] : undefined;
+    const equity = last?.equity ?? 100;
+    const peak = curve.length > 0 ? Math.max(...curve.map((p) => p.equity)) : 100;
+    const dd = peak > 0 ? ((peak - equity) / peak) * 100 : 0;
+    return {
+      currentEquity: equity,
+      isProfit: equity >= 100,
+      peakEquity: peak,
+      drawdown: dd,
+    };
+  }, [curve.length, curve[curve.length - 1]?.time]);
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-background p-5">

@@ -67,29 +67,11 @@ class Settings(BaseSettings):
         return warnings
 
     def enforce_production_security(self) -> None:
-        """Raise RuntimeError for critical insecure defaults in production.
-
-        Called during application lifespan startup. Non-fatal warnings are
-        returned by ``validate_production()`` and logged; fatal ones are raised
-        here so the container exits cleanly rather than serving with broken config.
-        """
-        if self.ENVIRONMENT != "production":
-            return
-        fatal: list[str] = []
-        if self.SECRET_KEY == "change-me-in-production":
-            fatal.append("SECRET_KEY must be changed before running in production")
-        if self.ADMIN_PASSWORD == "admin":
-            fatal.append("ADMIN_PASSWORD must be changed before running in production")
-        if fatal:
-            raise RuntimeError(
-                "Production security checks failed:\n" + "\n".join(f"  • {f}" for f in fatal)
-            )
-
-    def enforce_production_security(self) -> None:
         """Raise RuntimeError if critical settings use default values in production.
 
-        This method should be called during application startup to prevent
-        deploying with insecure defaults.
+        Called during application lifespan startup so the container exits
+        cleanly rather than serving with insecure or broken config.
+        Non-fatal warnings are returned by ``validate_production()`` and logged.
         """
         if self.ENVIRONMENT != "production":
             return
@@ -98,25 +80,25 @@ class Settings(BaseSettings):
 
         if self.SECRET_KEY == "change-me-in-production":
             errors.append(
-                "SECRET_KEY is still the default value. "
-                "Set a strong, unique SECRET_KEY for production."
+                "SECRET_KEY is still the default value — set a strong, unique SECRET_KEY."
             )
+
+        if self.ADMIN_PASSWORD == "admin":
+            errors.append("ADMIN_PASSWORD is still 'admin' — change before go-live.")
 
         if self.DATABASE_URL == "postgresql+asyncpg://user:pass@localhost:5432/trading_ai":
             errors.append(
-                "DATABASE_URL is still the default value. "
-                "Configure a production database connection string."
+                "DATABASE_URL is still the default value — configure a production database."
             )
 
         if self.REDIS_URL == "redis://localhost:6379/0":
             errors.append(
-                "REDIS_URL is still the default value. "
-                "Configure a production Redis connection string."
+                "REDIS_URL is still the default value — configure a production Redis instance."
             )
 
         if errors:
             raise RuntimeError(
-                "Production security check failed:\n- " + "\n- ".join(errors)
+                "Production security checks failed:\n" + "\n".join(f"  • {e}" for e in errors)
             )
 
 

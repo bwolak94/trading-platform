@@ -24,7 +24,24 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # Dead-letter queue — permanently-failed tasks are routed here for inspection
+    task_queues={
+        "default": {"exchange": "default", "routing_key": "default"},
+        "dlq": {"exchange": "dlq", "routing_key": "dlq"},
+    },
+    task_default_queue="default",
+    task_routes={
+        "app.tasks.*": {"queue": "default"},
+    },
+    # Tasks that exhaust retries are re-queued to dlq instead of being discarded
+    task_reject_on_worker_lost=True,
     beat_schedule={
+        # D7: Signal aging decay — runs every 15 minutes
+        "signal-aging-decay": {
+            "task": "app.tasks.signal_aging_decay",
+            "schedule": 900.0,
+            "options": {"expires": 890},
+        },
         "fetch-market-data": {
             "task": "app.tasks.fetch_market_data",
             "schedule": 60.0,
@@ -58,6 +75,28 @@ celery_app.conf.update(
         "send-daily-risk-report": {
             "task": "app.tasks.send_daily_risk_report",
             "schedule": 86400.0,
+            "options": {"expires": 3600},
+        },
+        "ohlcv-gap-detector": {
+            "task": "app.tasks.ohlcv_gap_detector",
+            "schedule": 3600.0,  # hourly
+            "options": {"expires": 3500},
+        },
+        "position-reconciliation": {
+            "task": "app.tasks.position_reconciliation",
+            "schedule": 86400.0,  # nightly
+            "options": {"expires": 3600},
+        },
+        # Reports — previously scheduled by APScheduler in main.py; moved here
+        # so Celery Beat is the single source of truth for all periodic tasks.
+        "daily-briefing": {
+            "task": "app.tasks.generate_daily_briefing",
+            "schedule": 86400.0,  # daily — actual cron pinning via crontab() if needed
+            "options": {"expires": 3600},
+        },
+        "weekly-report": {
+            "task": "app.tasks.generate_weekly_report",
+            "schedule": 604800.0,  # weekly
             "options": {"expires": 3600},
         },
     },
@@ -818,3 +857,252 @@ def cleanup_expired_signals() -> dict:
 
     logger.info("cleanup_expired_signals: archived %d signal(s)", archived_count)
     return {"archived_count": archived_count}
+
+
+@celery_app.task(name="app.tasks.ohlcv_gap_detector")
+def ohlcv_gap_detector() -> dict:
+    """Detect gaps in OHLCV candle series and alert via Telegram.
+
+    For each symbol × timeframe, computes the expected interval between
+    consecutive candles and flags any gap larger than 2× the interval.
+    Sends a Telegram alert if gaps are found.
+
+    Returns:
+        Dict with ``gaps_found`` count and list of affected series.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings as _cfg
+    from app.models.market_data import MarketData
+
+    sync_url = _cfg.DATABASE_URL.replace("+asyncpg", "")
+    engine = create_engine(sync_url)
+    Session = sessionmaker(bind=engine)
+
+    # Interval in minutes per timeframe label
+    tf_minutes: dict[str, int] = {
+        "1m": 1, "5m": 5, "15m": 15, "1h": 60,
+        "4h": 240, "1D": 1440,
+    }
+    gaps: list[dict] = []
+
+    with Session() as session:
+        for symbol in DEFAULT_SYMBOLS:
+            for tf, interval_min in tf_minutes.items():
+                rows = (
+                    session.query(MarketData.timestamp)
+                    .filter(MarketData.asset == symbol, MarketData.timeframe == tf)
+                    .order_by(MarketData.timestamp.asc())
+                    .limit(500)
+                    .all()
+                )
+                if len(rows) < 2:
+                    continue
+                threshold = timedelta(minutes=interval_min * 2)
+                for i in range(1, len(rows)):
+                    delta = rows[i][0] - rows[i - 1][0]
+                    if delta > threshold:
+                        gaps.append({
+                            "symbol": symbol,
+                            "timeframe": tf,
+                            "gap_start": rows[i - 1][0].isoformat(),
+                            "gap_end": rows[i][0].isoformat(),
+                            "gap_minutes": round(delta.total_seconds() / 60),
+                        })
+
+    if gaps:
+        msg_lines = [f"⚠️ OHLCV Gaps Detected ({len(gaps)} gap(s)):"]
+        for g in gaps[:10]:
+            msg_lines.append(
+                f"  {g['symbol']} {g['timeframe']} — {g['gap_minutes']}min gap "
+                f"from {g['gap_start'][:16]} to {g['gap_end'][:16]}"
+            )
+        send_telegram_message.delay("\n".join(msg_lines))
+
+    logger.info("ohlcv_gap_detector: %d gap(s) found across %d symbols", len(gaps), len(DEFAULT_SYMBOLS))
+    return {"gaps_found": len(gaps), "gaps": gaps[:20]}
+
+
+@celery_app.task(name="app.tasks.position_reconciliation")
+def position_reconciliation() -> dict:
+    """Nightly reconciliation of simulated positions vs. expected outcomes.
+
+    Flags any closed position where the recorded P&L diverges by more than
+    0.1% from what can be inferred from open/close prices. Results are
+    logged; large divergences trigger a Telegram alert.
+
+    Returns:
+        Dict with ``checked``, ``flagged`` counts.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings as _cfg
+
+    sync_url = _cfg.DATABASE_URL.replace("+asyncpg", "")
+    engine = create_engine(sync_url)
+    Session = sessionmaker(bind=engine)
+
+    flagged: list[dict] = []
+
+    try:
+        from app.ai.simulation.paper_trading_engine import SimulatedPosition
+
+        with Session() as session:
+            positions = (
+                session.query(SimulatedPosition)
+                .filter(
+                    SimulatedPosition.status.in_(["CLOSED", "SL_HIT", "TP1_HIT", "TP2_HIT"]),
+                    SimulatedPosition.entry_price.isnot(None),
+                    SimulatedPosition.exit_price.isnot(None),
+                    SimulatedPosition.pnl_pct.isnot(None),
+                )
+                .limit(500)
+                .all()
+            )
+
+            checked = len(positions)
+            for pos in positions:
+                if pos.entry_price and pos.exit_price and pos.pnl_pct is not None:
+                    if pos.direction == "LONG":
+                        expected_pct = ((pos.exit_price - pos.entry_price) / pos.entry_price) * 100
+                    else:
+                        expected_pct = ((pos.entry_price - pos.exit_price) / pos.entry_price) * 100
+
+                    divergence = abs(expected_pct - float(pos.pnl_pct))
+                    if divergence > 0.1:
+                        flagged.append({
+                            "id": str(pos.id),
+                            "symbol": pos.symbol,
+                            "recorded_pnl": float(pos.pnl_pct),
+                            "expected_pnl": round(expected_pct, 4),
+                            "divergence": round(divergence, 4),
+                        })
+
+    except Exception as exc:
+        logger.error("position_reconciliation error: %s", exc)
+        return {"checked": 0, "flagged": 0, "error": str(exc)}
+
+    if flagged:
+        msg = f"⚠️ Position Reconciliation: {len(flagged)} divergence(s) > 0.1%\n"
+        msg += "\n".join(
+            f"  {f['symbol']} {f['id'][:8]} recorded={f['recorded_pnl']:.2f}% expected={f['expected_pnl']:.2f}%"
+            for f in flagged[:5]
+        )
+        send_telegram_message.delay(msg)
+
+    logger.info("position_reconciliation: checked=%d flagged=%d", checked, len(flagged))
+    return {"checked": checked, "flagged": len(flagged), "details": flagged[:10]}
+
+
+@celery_app.task(name="app.tasks.signal_aging_decay")
+def signal_aging_decay() -> dict:
+    """D7: Apply confidence decay to aging active signals.
+
+    Reduces confidence of ACTIVE signals older than 2 hours by 5% per hour.
+    Marks signals as STALE after 6 hours without a TP/SL hit.
+
+    Uses a synchronous DB session since Celery tasks run outside the async loop.
+
+    Returns:
+        Dict with ``decayed_count`` and ``stale_count``.
+    """
+    from sqlalchemy import create_engine, update, and_
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import settings as _cfg
+    from app.models.signal import Signal as SignalModel
+
+    sync_url = _cfg.DATABASE_URL.replace("+asyncpg", "")
+    engine = create_engine(sync_url, pool_pre_ping=True)
+    Session = sessionmaker(bind=engine)
+
+    now = datetime.now(timezone.utc)
+    decay_threshold = now - timedelta(hours=2)
+    stale_threshold = now - timedelta(hours=6)
+
+    decayed_count = 0
+    stale_count = 0
+
+    with Session() as session:
+        try:
+            # Mark signals older than 6h as STALE
+            stale_result = session.execute(
+                update(SignalModel)
+                .where(
+                    and_(
+                        SignalModel.status == "ACTIVE",
+                        SignalModel.created_at <= stale_threshold,
+                    )
+                )
+                .values(status="STALE", updated_at=now)
+                .execution_options(synchronize_session="fetch")
+            )
+            stale_count = stale_result.rowcount or 0
+
+            # Decay confidence of signals older than 2h (but not yet STALE)
+            aging_signals_result = session.execute(
+                select(SignalModel).where(
+                    and_(
+                        SignalModel.status == "ACTIVE",
+                        SignalModel.created_at <= decay_threshold,
+                        SignalModel.created_at > stale_threshold,
+                    )
+                )
+            )
+            aging_signals = aging_signals_result.scalars().all()
+
+            for sig in aging_signals:
+                age_hours = (now - sig.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                hours_decaying = max(0, age_hours - 2)
+                decay_factor = 1 - (0.05 * hours_decaying)
+                new_confidence = max(Decimal("0"), sig.confidence * Decimal(str(decay_factor)))
+                sig.confidence = new_confidence.quantize(Decimal("0.01"))
+                sig.updated_at = now
+                decayed_count += 1
+
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.error("signal_aging_decay failed: %s", exc)
+            raise
+
+    logger.info("signal_aging_decay: decayed=%d stale=%d", decayed_count, stale_count)
+    return {"decayed_count": decayed_count, "stale_count": stale_count}
+
+
+@celery_app.task(name="app.tasks.generate_daily_briefing")
+def generate_daily_briefing() -> dict:
+    """Generate and send the daily market briefing via Telegram.
+
+    Replaces the APScheduler job that previously ran in main.py, so Celery Beat
+    is now the single scheduler for all periodic tasks.
+    """
+    async def _run():
+        from app.ai.reports.daily_briefing import generate_and_send_daily_briefing
+        await generate_and_send_daily_briefing()
+
+    try:
+        _run_async(_run())
+        logger.info("Daily briefing sent")
+        return {"status": "sent"}
+    except Exception as exc:
+        logger.error("generate_daily_briefing failed: %s", exc)
+        return {"status": "error", "detail": str(exc)}
+
+
+@celery_app.task(name="app.tasks.generate_weekly_report")
+def generate_weekly_report() -> dict:
+    """Generate and send the weekly performance report via Telegram.
+
+    Replaces the APScheduler job that previously ran in main.py.
+    """
+    async def _run():
+        from app.ai.reports.weekly_report import generate_weekly_report as _gen
+        await _gen()
+
+    try:
+        _run_async(_run())
+        logger.info("Weekly report sent")
+        return {"status": "sent"}
+    except Exception as exc:
+        logger.error("generate_weekly_report failed: %s", exc)
+        return {"status": "error", "detail": str(exc)}

@@ -1,5 +1,91 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import type { Signal } from "../../types";
+
+// --------------- G1: Swipe gesture hook ---------------
+
+type SwipeAction = "watch" | "dismiss" | null;
+
+function useSwipeGesture(onSwipe: (action: SwipeAction) => void) {
+  const touchStartX = useRef<number | null>(null);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  }, []);
+
+  const onTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartX.current === null) return;
+      const deltaX = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+      touchStartX.current = null;
+      if (Math.abs(deltaX) < 60) return; // dead zone
+      onSwipe(deltaX > 0 ? "watch" : "dismiss");
+    },
+    [onSwipe],
+  );
+
+  return { onTouchStart, onTouchEnd };
+}
+
+// --------------- Signal age ---------------
+
+function useSignalAgeMinutes(createdAt: string): number {
+  const [ageMin, setAgeMin] = useState(() =>
+    Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000),
+  );
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setAgeMin(Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [createdAt]);
+  return ageMin;
+}
+
+function ageBadgeClass(ageMin: number): string {
+  if (ageMin < 30) return "bg-bullish/15 text-bullish";
+  if (ageMin < 120) return "bg-amber-500/20 text-amber-400";
+  return "bg-bearish/20 text-bearish animate-pulse";
+}
+
+function fmtAge(ageMin: number): string {
+  if (ageMin < 60) return `${ageMin}m`;
+  return `${Math.floor(ageMin / 60)}h ${ageMin % 60}m`;
+}
+
+// --------------- Confidence trend ---------------
+
+function useConfidenceTrend(signalId: string, currentConf: number): "up" | "down" | "flat" {
+  const prevRef = useRef<number | null>(null);
+  const key = `conf_prev_${signalId}`;
+
+  const [trend, setTrend] = useState<"up" | "down" | "flat">(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored !== null) {
+        const prev = parseFloat(stored);
+        if (currentConf > prev + 1) return "up";
+        if (currentConf < prev - 1) return "down";
+      }
+    } catch { /* ignore */ }
+    return "flat";
+  });
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      const prev = stored !== null ? parseFloat(stored) : null;
+      if (prev !== null) {
+        if (currentConf > prev + 1) setTrend("up");
+        else if (currentConf < prev - 1) setTrend("down");
+        else setTrend("flat");
+      }
+      localStorage.setItem(key, String(currentConf));
+      prevRef.current = currentConf;
+    } catch { /* ignore */ }
+  }, [currentConf, key]);
+
+  return trend;
+}
 
 const directionConfig = {
   LONG: { icon: "\u{1F7E2}", color: "text-bullish", border: "border-bullish/30" },
@@ -19,6 +105,37 @@ interface SparklineState {
   error: boolean;
 }
 
+// Module-level cache: symbol → { prices, expiresAt }
+// In-flight map: symbol → Promise<number[]> — deduplicates concurrent requests for the same symbol
+// (React Strict Mode fires effects twice; without in-flight dedup each card would launch 2 fetches)
+const _sparklineCache = new Map<string, { prices: number[]; expiresAt: number }>();
+const _sparklineInflight = new Map<string, Promise<number[]>>();
+const _SPARKLINE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function fetchSparklinePrices(symbol: string): Promise<number[]> {
+  // Return in-flight promise if one already exists
+  const inflight = _sparklineInflight.get(symbol);
+  if (inflight) return inflight;
+
+  const promise = fetch(`/api/v1/market/ohlcv?symbol=${symbol}&timeframe=1h&limit=24`)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<OHLCVBar[] | { data: OHLCVBar[] }>;
+    })
+    .then((body) => {
+      const bars: OHLCVBar[] = Array.isArray(body) ? body : (body as { data: OHLCVBar[] }).data ?? [];
+      const prices = bars.map((b) => b.close).filter((p): p is number => typeof p === "number");
+      _sparklineCache.set(symbol, { prices, expiresAt: Date.now() + _SPARKLINE_TTL_MS });
+      return prices;
+    })
+    .finally(() => {
+      _sparklineInflight.delete(symbol);
+    });
+
+  _sparklineInflight.set(symbol, promise);
+  return promise;
+}
+
 function useSparkline(asset: string): SparklineState {
   const [state, setState] = useState<SparklineState>({
     prices: [],
@@ -28,20 +145,20 @@ function useSparkline(asset: string): SparklineState {
 
   useEffect(() => {
     let cancelled = false;
-    setState({ prices: [], isLoading: true, error: false });
-
     const symbol = asset.includes("USDT") ? asset : `${asset}USDT`;
 
-    fetch(`/api/v1/market/ohlcv?symbol=${symbol}&timeframe=1h&limit=24`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<OHLCVBar[] | { data: OHLCVBar[] }>;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        const bars: OHLCVBar[] = Array.isArray(body) ? body : (body as { data: OHLCVBar[] }).data ?? [];
-        const prices = bars.map((b) => b.close).filter((p): p is number => typeof p === "number");
-        setState({ prices, isLoading: false, error: false });
+    // Serve from cache if still fresh
+    const cached = _sparklineCache.get(symbol);
+    if (cached && Date.now() < cached.expiresAt) {
+      setState({ prices: cached.prices, isLoading: false, error: false });
+      return;
+    }
+
+    setState((s) => ({ ...s, isLoading: true }));
+
+    fetchSparklinePrices(symbol)
+      .then((prices) => {
+        if (!cancelled) setState({ prices, isLoading: false, error: false });
       })
       .catch(() => {
         if (!cancelled) setState({ prices: [], isLoading: false, error: true });
@@ -142,15 +259,47 @@ function SparklineSection({ asset }: { asset: string }) {
 interface SignalCardProps {
   signal: Signal;
   isNew?: boolean;
+  /** Slip in basis points applied to entry (default 5bps) for adjusted R/R display */
+  slippageBps?: number;
+  /** If true, renders a "duplicate" badge — same asset+direction within 15 min */
+  isDuplicate?: boolean;
   onNavigate?: (asset: string, timeframe?: string) => void;
 }
 
-export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
+export const SignalCard = memo(function SignalCard({ signal, isNew, slippageBps = 5, isDuplicate = false, onNavigate }: SignalCardProps) {
   const config = directionConfig[signal.direction] ?? directionConfig.NEUTRAL;
+  const ageMin = useSignalAgeMinutes(signal.created_at);
+  const confTrend = useConfidenceTrend(signal.id, signal.confidence ?? 0);
+
+  // Slippage-adjusted R/R
+  const slippageFactor = 1 + (slippageBps / 10000);
+  const adjEntry = signal.direction === "LONG"
+    ? (signal.entry_price ?? 0) * slippageFactor
+    : (signal.entry_price ?? 0) / slippageFactor;
+  const adjRR = signal.stop_loss && signal.take_profit_1 && adjEntry
+    ? Math.abs(signal.take_profit_1 - adjEntry) / Math.abs(adjEntry - signal.stop_loss)
+    : signal.risk_reward ?? 0;
+
+  // G1: Swipe gestures — swipe right to Watch, left to Dismiss
+  const [swipeHint, setSwipeHint] = useState<"watch" | "dismiss" | null>(null);
+  const [watched, setWatched] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  const handleSwipe = useCallback((action: SwipeAction) => {
+    if (!action) return;
+    setSwipeHint(action);
+    if (action === "watch") setWatched(true);
+    if (action === "dismiss") setDismissed(true);
+    setTimeout(() => setSwipeHint(null), 800);
+  }, []);
+
+  const { onTouchStart, onTouchEnd } = useSwipeGesture(handleSwipe);
 
   const handleClick = () => {
     onNavigate?.(signal.asset);
   };
+
+  if (dismissed) return null;
 
   return (
     <div
@@ -163,19 +312,49 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
           handleClick();
         }
       }}
-      className={`rounded-lg border ${config.border} bg-surface p-5 transition-all ${
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      className={`relative rounded-lg border ${config.border} bg-surface p-5 transition-all ${
         isNew ? "animate-pulse ring-1 ring-bullish/40" : ""
-      } ${onNavigate ? "cursor-pointer hover:border-accent/50 hover:ring-1 hover:ring-accent/30" : ""}`}
+      } ${onNavigate ? "cursor-pointer hover:border-accent/50 hover:ring-1 hover:ring-accent/30" : ""}
+      ${swipeHint === "watch" ? "ring-2 ring-bullish/60" : ""}
+      ${swipeHint === "dismiss" ? "opacity-60 ring-2 ring-bearish/60" : ""}`}
       aria-label={onNavigate ? `Navigate chart to ${signal.asset}` : undefined}
     >
+      {/* G1: Swipe action overlay */}
+      {swipeHint && (
+        <div className={`absolute inset-0 flex items-center justify-center rounded-lg text-xs font-bold pointer-events-none
+          ${swipeHint === "watch" ? "bg-bullish/10 text-bullish" : "bg-bearish/10 text-bearish"}`}
+          aria-hidden="true"
+        >
+          {swipeHint === "watch" ? "WATCHING" : "DISMISSED"}
+        </div>
+      )}
+      {watched && (
+        <div className="absolute right-2 top-2 rounded bg-bullish/20 px-1.5 py-0.5 text-[10px] font-semibold text-bullish pointer-events-none" aria-label="Signal marked as watched">
+          WATCHING
+        </div>
+      )}
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
-        <h3 className={`text-lg font-semibold ${config.color}`}>
-          {config.icon} {signal.asset} {signal.direction}
-        </h3>
-        <span className="rounded bg-surface px-2 py-0.5 text-xs text-gray-400">
-          {signal.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <h3 className={`text-lg font-semibold ${config.color}`}>
+            {config.icon} {signal.asset} {signal.direction}
+          </h3>
+          {isDuplicate && (
+            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-400" title="Re-emit of a recent signal">
+              DUP
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${ageBadgeClass(ageMin)}`}>
+            {fmtAge(ageMin)}
+          </span>
+          <span className="rounded bg-surface px-2 py-0.5 text-xs text-gray-400">
+            {signal.status}
+          </span>
+        </div>
       </div>
 
       {/* Confidence */}
@@ -183,8 +362,10 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
         <div className="group relative">
           <div className="mb-1 flex items-center justify-between text-sm">
             <span className="text-gray-400">Confidence</span>
-            <span className={`font-mono font-bold ${config.color}`}>
+            <span className={`flex items-center gap-1 font-mono font-bold ${config.color}`}>
               {(signal.confidence ?? 0).toFixed(0)}%
+              {confTrend === "up" && <span className="text-bullish text-xs" aria-label="Confidence rising">↑</span>}
+              {confTrend === "down" && <span className="text-bearish text-xs" aria-label="Confidence falling">↓</span>}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-background">
@@ -249,8 +430,16 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border pt-3 text-xs text-gray-500">
-        <span className="rounded bg-background px-2 py-0.5">
-          R/R {(signal.risk_reward ?? 0).toFixed(1)}
+        <span
+          className="rounded bg-background px-2 py-0.5"
+          title={`Slippage-adjusted R/R (${slippageBps}bps)`}
+        >
+          R/R {adjRR.toFixed(1)}
+          {Math.abs(adjRR - (signal.risk_reward ?? 0)) > 0.05 && (
+            <span className="ml-1 text-[9px] text-gray-600">
+              ({(signal.risk_reward ?? 0).toFixed(1)} raw)
+            </span>
+          )}
         </span>
         <RegimeBadge regime={signal.regime} />
         <div className="flex items-center gap-2">
@@ -265,7 +454,12 @@ export function SignalCard({ signal, isNew, onNavigate }: SignalCardProps) {
       </div>
     </div>
   );
-}
+// Memoized — only re-renders when signal.id or signal.updated_at changes
+}, (prev, next) =>
+  prev.signal.id === next.signal.id &&
+  prev.signal.updated_at === next.signal.updated_at &&
+  prev.isNew === next.isNew,
+);
 
 function LevelRow({
   label,

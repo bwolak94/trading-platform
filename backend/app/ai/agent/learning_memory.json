@@ -16,16 +16,16 @@
     },
     "delta_divergence:INTRADAY": {
       "wins": 10,
-      "losses": 350,
-      "total_pnl": -637.0699999999998,
-      "avg_reward": -1.818,
+      "losses": 353,
+      "total_pnl": -646.4499999999998,
+      "avg_reward": -1.819,
       "confidence_adj": 0.3
     },
     "trend_following:CONSOLIDATION": {
       "wins": 3,
-      "losses": 69,
-      "total_pnl": -95.77999999999999,
-      "avg_reward": -0.633,
+      "losses": 70,
+      "total_pnl": -97.24999999999999,
+      "avg_reward": -0.638,
       "confidence_adj": 0.3
     },
     "mean_reversion:CONSOLIDATION": {
@@ -112,9 +112,9 @@
     "trend_trader": 0.3
   },
   "blocked": {
-    "delta_divergence:INTRADAY": "2026-04-24T19:00:51.120970+00:00",
+    "delta_divergence:INTRADAY": "2026-04-26T13:08:46.192892+00:00",
     "vwap_reversion:INTRADAY": "2026-04-25T23:09:02.878086+00:00",
-    "trend_following:CONSOLIDATION": "2026-04-26T03:47:42.172621+00:00"
+    "trend_following:CONSOLIDATION": "2026-04-26T15:06:11.247761+00:00"
   },
   "win_patterns": [
     {
@@ -522,38 +522,6 @@
     {
       "strategy": "trend_following",
       "regime": "CONSOLIDATION",
-      "pnl": -2.16,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-25T12:34:54.439222+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.54,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-25T12:35:12.095851+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -2.19,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-25T12:35:44.692262+00:00"
-    },
-    {
-      "strategy": "vwap_reversion",
-      "regime": "INTRADAY",
-      "pnl": -1.69,
-      "hit": "SL",
-      "snapshot": {},
-      "time": "2026-04-25T12:35:45.282211+00:00"
-    },
-    {
-      "strategy": "trend_following",
-      "regime": "CONSOLIDATION",
       "pnl": -2.21,
       "hit": "SL",
       "snapshot": {},
@@ -918,6 +886,38 @@
       "hit": "SL",
       "snapshot": {},
       "time": "2026-04-25T21:47:42.171699+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.15,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-26T07:05:57.967035+00:00"
+    },
+    {
+      "strategy": "trend_following",
+      "regime": "CONSOLIDATION",
+      "pnl": -1.47,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-26T07:06:11.246871+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.08,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-26T07:07:20.199403+00:00"
+    },
+    {
+      "strategy": "delta_divergence",
+      "regime": "INTRADAY",
+      "pnl": -3.15,
+      "hit": "SL",
+      "snapshot": {},
+      "time": "2026-04-26T07:08:46.192784+00:00"
     }
   ]
 }

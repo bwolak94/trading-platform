@@ -158,7 +158,7 @@ export function EarningsCalendarPanel() {
       ) : (
         <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
           {events.map((event) => (
-            <EventRow key={event.id} event={event} />
+            <EventRow key={event.id ?? `${event.date}-${event.event_name}`} event={event} />
           ))}
         </div>
       )}

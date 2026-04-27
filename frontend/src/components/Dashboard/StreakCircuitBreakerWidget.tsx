@@ -225,7 +225,7 @@ export default function StreakCircuitBreakerWidget() {
               </div>
             </div>
             <div className="flex gap-1" aria-hidden="true">
-              {[...Array(Math.min(data.consecutive_losses, 5))].map((_, i) => (
+              {[...Array(Math.max(0, Math.min(Math.floor(data.consecutive_losses ?? 0), 5)))].map((_, i) => (
                 <span key={i} className="text-lg">
                   🔴
                 </span>

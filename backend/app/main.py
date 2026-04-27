@@ -1,14 +1,11 @@
 """FastAPI application entry point."""
 
-import asyncio
-import random
-import time as _time
 import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlencode
+import time as _time
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -32,13 +29,16 @@ from app.ai.signals.regime_transition import router as regime_transition_router
 from app.ai.signals.liquidation_cascade import router as liquidation_cascade_router
 from app.ai.risk.drawdown_budget import router as drawdown_budget_router
 from app.api.v1.features import router as features_router
-from app.api.v1.features2 import router as features2_router
+from app.api.v1.extended_features import router as extended_features_router
 from app.api.v1.multi_exchange import router as multi_exchange_router
 from app.api.v1.oi_momentum import router as oi_momentum_router
 from app.api.v1.dark_pool import router as dark_pool_router
 from app.api.v1.ai_commentary import router as ai_commentary_router
 from app.api.v1.news_backtester import router as news_backtester_router
 from app.api.v1.futures_testnet import router as futures_testnet_router
+from app.api.v1.stop_loss_optimizer import router as stop_loss_optimizer_router
+from app.api.v1.trade_screener import router as trade_screener_router
+from app.api.v1.ab_backtester import router as ab_backtester_router
 from app.core.config import settings as app_settings
 from app.core.exceptions import (
     DataFetchError,
@@ -48,6 +48,7 @@ from app.core.exceptions import (
     TradingPlatformError,
 )
 from app.core.logging import get_logger, set_request_id
+from app.core.startup import start_service, stop_service
 from app.core.websocket import manager
 
 logger = get_logger(__name__)
@@ -57,6 +58,10 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
     logger.info("AI Trading Navigator starting up")
+
+    # Wire OpenTelemetry tracing before any I/O
+    from app.core.telemetry import setup_tracing
+    setup_tracing(app)
 
     # Enforce production security — raises RuntimeError on insecure defaults
     app_settings.enforce_production_security()
@@ -70,172 +75,63 @@ async def lifespan(app: FastAPI):
         logger.warning("Failed to load dynamic symbols, falling back to static list: %s", exc)
 
     # Validate production configuration
-    prod_warnings = app_settings.validate_production()
-    for w in prod_warnings:
+    for w in app_settings.validate_production():
         logger.warning("CONFIG WARNING: %s", w)
 
     # Start Order Flow engines for default symbols
     from app.data.fetchers.orderflow_engine import get_orderflow_manager
-
     of_manager = get_orderflow_manager()
-    default_symbols = [
+    for symbol, tick_size, window_sec in [
         ("BTCUSDT", 1.0, 60),
         ("ETHUSDT", 1.0, 60),
         ("SOLUSDT", 0.1, 60),
-    ]
-    for symbol, tick_size, window_sec in default_symbols:
-        try:
-            await of_manager.start_engine(
-                symbol=symbol,
-                tick_size=tick_size,
-                window_seconds=window_sec,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to start OrderFlowEngine for %s: %s", symbol, exc,
-            )
-
+    ]:
+        await start_service(
+            f"OrderFlowEngine[{symbol}]",
+            of_manager.start_engine(symbol=symbol, tick_size=tick_size, window_seconds=window_sec),
+        )
     logger.info("Order Flow engines started for %s", list(of_manager.list_engines().keys()))
 
-    # Start Liquidation Engine (single engine covers all symbols via !forceOrder@arr)
+    # Start remaining background services
     from app.data.fetchers.liquidation_engine import get_liquidation_manager
-
-    liq_manager = get_liquidation_manager()
-    try:
-        await liq_manager.start()
-        logger.info("Liquidation engine started")
-    except Exception as exc:
-        logger.warning("Failed to start LiquidationEngine: %s", exc)
-
-    # Start AI Trading Agent
     from app.ai.agent.trading_agent import get_trading_agent
-
-    trading_agent = get_trading_agent()
-    try:
-        await trading_agent.start()
-        logger.info("AI Trading Agent started")
-    except Exception as exc:
-        logger.warning("Failed to start TradingAgent: %s", exc)
-
-    # Start Day Trading Engine
     from app.ai.agent.day_trading import get_day_trading_engine
-
-    day_trading_engine = get_day_trading_engine()
-    try:
-        await day_trading_engine.start()
-        logger.info("Day Trading Engine started")
-    except Exception as exc:
-        logger.warning("Failed to start DayTradingEngine: %s", exc)
-
-    # Start Forex Provider
     from app.data.fetchers.forex_provider import get_forex_provider
-
-    forex_provider = get_forex_provider()
-    try:
-        await forex_provider.start()
-        logger.info("Forex Provider started")
-    except Exception as exc:
-        logger.warning("Failed to start ForexProvider: %s", exc)
-
-    # Start News Aggregator
     from app.data.fetchers.news_aggregator import get_news_aggregator
-
-    news_aggregator = get_news_aggregator()
-    try:
-        await news_aggregator.start()
-        logger.info("News Aggregator started")
-    except Exception as exc:
-        logger.warning("Failed to start NewsAggregator: %s", exc)
-
-    # Start Whale Tracker
     from app.data.fetchers.whale_tracker import get_whale_tracker
-
-    whale_tracker = get_whale_tracker()
-    try:
-        await whale_tracker.start()
-        logger.info("Whale Tracker started")
-    except Exception as exc:
-        logger.warning("Failed to start WhaleTracker: %s", exc)
-
-    # Start Paper Trading Simulation Engine
     from app.ai.simulation.paper_trading_engine import get_paper_trading_engine
 
+    liq_manager = get_liquidation_manager()
+    trading_agent = get_trading_agent()
+    day_trading_engine = get_day_trading_engine()
+    forex_provider = get_forex_provider()
+    news_aggregator = get_news_aggregator()
+    whale_tracker = get_whale_tracker()
     paper_engine = get_paper_trading_engine()
-    try:
-        await paper_engine.start()
-        logger.info("Paper Trading Engine started — session %s", paper_engine.session_id)
-    except Exception as exc:
-        logger.warning("Failed to start PaperTradingEngine: %s", exc)
 
-    # Start APScheduler for periodic report jobs
-    from app.ai.reports.daily_briefing import generate_and_send_daily_briefing
-    from app.ai.reports.weekly_report import generate_weekly_report
+    await start_service("LiquidationEngine", liq_manager.start())
+    await start_service("TradingAgent", trading_agent.start())
+    await start_service("DayTradingEngine", day_trading_engine.start())
+    await start_service("ForexProvider", forex_provider.start())
+    await start_service("NewsAggregator", news_aggregator.start())
+    await start_service("WhaleTracker", whale_tracker.start())
+    await start_service("PaperTradingEngine", paper_engine.start())
 
-    scheduler = AsyncIOScheduler(timezone="UTC")
-    scheduler.add_job(
-        generate_and_send_daily_briefing,
-        "cron",
-        hour=0,
-        minute=0,
-        id="daily_briefing",
-        misfire_grace_time=300,
-    )
-    scheduler.add_job(
-        generate_weekly_report,
-        "cron",
-        day_of_week="mon",
-        hour=8,
-        minute=0,
-        id="weekly_report",
-        misfire_grace_time=300,
-    )
-    try:
-        scheduler.start()
-        logger.info("APScheduler started — daily_briefing at 00:00 UTC, weekly_report on Mon 08:00 UTC")
-    except Exception as exc:
-        logger.warning("Failed to start APScheduler: %s", exc)
+    logger.info("Paper Trading Engine session: %s", paper_engine.session_id)
 
     yield
 
-    # Shutdown APScheduler
-    logger.info("Shutting down APScheduler...")
-    try:
-        scheduler.shutdown(wait=False)
-    except Exception as exc:
-        logger.warning("APScheduler shutdown error: %s", exc)
+    # Shutdown in reverse order
+    await stop_service("PaperTradingEngine", paper_engine.stop())
+    await stop_service("WhaleTracker", whale_tracker.stop())
+    await stop_service("NewsAggregator", news_aggregator.stop())
+    await stop_service("ForexProvider", forex_provider.stop())
+    await stop_service("DayTradingEngine", day_trading_engine.stop())
+    await stop_service("TradingAgent", trading_agent.stop())
+    await stop_service("LiquidationEngine", liq_manager.stop())
+    await stop_service("OrderFlowEngines", of_manager.stop_all())
 
-    # Shutdown Paper Trading Engine
-    logger.info("Shutting down Paper Trading Engine...")
-    await paper_engine.stop()
-
-    # Shutdown Whale Tracker
-    logger.info("Shutting down Whale Tracker...")
-    await whale_tracker.stop()
-
-    # Shutdown News Aggregator
-    logger.info("Shutting down News Aggregator...")
-    await news_aggregator.stop()
-
-    # Shutdown Forex Provider
-    logger.info("Shutting down Forex Provider...")
-    await forex_provider.stop()
-
-    # Shutdown Day Trading Engine
-    logger.info("Shutting down Day Trading Engine...")
-    await day_trading_engine.stop()
-
-    # Shutdown AI Trading Agent
-    logger.info("Shutting down AI Trading Agent...")
-    await trading_agent.stop()
-
-    # Shutdown Liquidation Engine
-    logger.info("Shutting down Liquidation engine...")
-    await liq_manager.stop()
-
-    # Shutdown Order Flow engines
-    logger.info("Shutting down Order Flow engines...")
-    await of_manager.stop_all()
-    logger.info("AI Trading Navigator shutting down")
+    logger.info("AI Trading Navigator shut down")
 
 
 app = FastAPI(
@@ -261,20 +157,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-API-Key"],
 )
 
 
 # Correlation ID middleware
 @app.middleware("http")
 async def correlation_id_middleware(request: Request, call_next):
-    """Attach a per-request correlation ID to every log line and response header.
-
-    Reads X-Request-ID from the incoming request (e.g. set by a proxy/frontend),
-    or generates a new UUID4. The ID is stored in a ContextVar so all loggers
-    in the same async context automatically include it.
-    """
+    """Attach a per-request correlation ID to every log line and response header."""
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     set_request_id(request_id)
     response = await call_next(request)
@@ -282,14 +173,75 @@ async def correlation_id_middleware(request: Request, call_next):
     return response
 
 
+# --- Sensitive value masking for request logging ---
+
+_SENSITIVE_HEADERS: frozenset[str] = frozenset({
+    "authorization", "api_key", "token", "secret", "x-api-key",
+})
+
+_SENSITIVE_QUERY_PARAMS: frozenset[str] = frozenset({
+    "api_key", "token", "secret",
+})
+
+_MASKED = "***MASKED***"
+
+
+def _mask_value(value: str) -> str:
+    """Mask a sensitive value, keeping the first 4 chars if longer than 8."""
+    if len(value) > 8:
+        return value[:4] + _MASKED
+    return _MASKED
+
+
+def _mask_query_string(query_string: str) -> str:
+    """Return query string with sensitive parameter values masked."""
+    if not query_string:
+        return query_string
+    parsed = parse_qs(query_string, keep_blank_values=True)
+    masked: dict[str, list[str]] = {}
+    for key, values in parsed.items():
+        if key.lower() in _SENSITIVE_QUERY_PARAMS:
+            masked[key] = [_mask_value(v) for v in values]
+        else:
+            masked[key] = values
+    return urlencode(masked, doseq=True)
+
+
+_API_VERSION = "0.1.0"
+
+# Request body size limit — 1 MB cap to prevent oversized payloads
+_MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
+
+
+@app.middleware("http")
+async def body_size_limit_middleware(request: Request, call_next):
+    """Reject requests with Content-Length exceeding 1 MB."""
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > _MAX_BODY_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={"error": "payload_too_large", "detail": "Request body must be ≤ 1 MB"},
+        )
+    return await call_next(request)
+
+
 # Rate limiting middleware
+# NOTE: This is a single-process in-memory implementation.
+# In multi-worker deployments use the Redis-backed rate limiter instead.
 _rate_limits: dict[str, list[float]] = defaultdict(list)
-EXPENSIVE_PATHS = {"/api/v1/analyze/run", "/api/v1/chat", "/api/v1/backtest/run"}
+
+# Auth endpoint uses a stricter limit to prevent brute-force attacks
+EXPENSIVE_PATHS = {
+    "/api/v1/analyze/run",
+    "/api/v1/chat",
+    "/api/v1/backtest/run",
+    "/api/v1/auth/token",  # brute-force protection
+}
 
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Enforce per-IP rate limits: 10 req/min for expensive endpoints, 60 req/min otherwise."""
+    """Enforce per-IP rate limits: 10 req/min for expensive/auth endpoints, 60 req/min otherwise."""
     client_ip = request.client.host if request.client else "unknown"
     path = request.url.path
     now = _time.time()
@@ -309,77 +261,22 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# --- Sensitive value masking for request logging ---
-
-_SENSITIVE_HEADERS: frozenset[str] = frozenset({
-    "authorization", "api_key", "token", "secret", "x-api-key",
-})
-
-_SENSITIVE_QUERY_PARAMS: frozenset[str] = frozenset({
-    "api_key", "token", "secret",
-})
-
-_SENSITIVE_BODY_FIELDS: frozenset[str] = frozenset({
-    "api_key", "token", "secret", "password", "authorization",
-})
-
-_MASKED = "***MASKED***"
-
-
-def _mask_value(value: str) -> str:
-    """Mask a sensitive value, keeping the first 4 chars if longer than 8."""
-    if len(value) > 8:
-        return value[:4] + _MASKED
-    return _MASKED
-
-
-def _mask_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Return a copy of headers with sensitive values masked."""
-    return {
-        k: _mask_value(v) if k.lower() in _SENSITIVE_HEADERS else v
-        for k, v in headers.items()
-    }
-
-
-def _mask_query_string(query_string: str) -> str:
-    """Return query string with sensitive parameter values masked."""
-    if not query_string:
-        return query_string
-    parsed = parse_qs(query_string, keep_blank_values=True)
-    masked: dict[str, list[str]] = {}
-    for key, values in parsed.items():
-        if key.lower() in _SENSITIVE_QUERY_PARAMS:
-            masked[key] = [_mask_value(v) for v in values]
-        else:
-            masked[key] = values
-    return urlencode(masked, doseq=True)
-
-
-def _mask_body(body: dict[str, object]) -> dict[str, object]:
-    """Return a copy of request body dict with sensitive fields masked."""
-    return {
-        k: _mask_value(str(v)) if k.lower() in _SENSITIVE_BODY_FIELDS else v
-        for k, v in body.items()
-    }
-
-
-_API_VERSION = "0.1.0"
-
-# Paths that get a hard 30 s server-side timeout — prevents ML endpoints from hanging
+# Paths that get a hard 30 s server-side timeout
 _TIMEOUT_PATHS = {"/api/v1/analyze/run", "/api/v1/chat", "/api/v1/backtest/run"}
 
-# Paths sampled at 1 % to keep logs quiet
+# Paths sampled at 1% to keep logs quiet
 _SAMPLED_PATHS = {"/api/v1/health", "/api/v1/status"}
 
+import asyncio
+import random
 
-# Request logging + version header + timeout middleware
+
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     """Log requests, attach X-API-Version header, enforce timeouts on expensive paths."""
     start = _time.time()
     path = request.url.path
 
-    # Per-endpoint timeout for expensive ML routes
     if path in _TIMEOUT_PATHS:
         try:
             response = await asyncio.wait_for(call_next(request), timeout=30.0)
@@ -392,11 +289,8 @@ async def request_logging_middleware(request: Request, call_next):
         response = await call_next(request)
 
     duration = round((_time.time() - start) * 1000, 1)
-
-    # Attach version header to every response
     response.headers["x-api-version"] = _API_VERSION
 
-    # Log at 1 % for sampled paths, always for the rest (skip health entirely at 99 %)
     if path not in _SAMPLED_PATHS or random.random() < 0.01:
         masked_qs = _mask_query_string(request.url.query or "")
         safe_path = f"{path}?{masked_qs}" if masked_qs else path
@@ -407,7 +301,6 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 
-# Error handling middleware
 @app.middleware("http")
 async def error_handling_middleware(request: Request, call_next):
     """Catch unhandled exceptions and return structured JSON errors."""
@@ -415,9 +308,11 @@ async def error_handling_middleware(request: Request, call_next):
         return await call_next(request)
     except Exception as exc:
         logger.exception("Unhandled error: %s", exc)
+        # Never leak internal details (stack traces, file paths) in production
+        detail = str(exc) if app_settings.ENVIRONMENT != "production" else "An internal error occurred"
         return JSONResponse(
             status_code=500,
-            content={"error": "internal_server_error", "detail": str(exc)},
+            content={"error": "internal_server_error", "detail": detail},
         )
 
 
@@ -440,7 +335,6 @@ async def trading_platform_error_handler(request: Request, exc: TradingPlatformE
         "detail": exc.message,
     }
 
-    # Include retry_after header and field for rate-limit errors
     headers: dict[str, str] = {}
     if isinstance(exc, RateLimitError):
         body["retry_after"] = exc.retry_after
@@ -489,13 +383,17 @@ app.include_router(regime_transition_router, prefix="/api/v1")
 app.include_router(liquidation_cascade_router, prefix="/api/v1")
 app.include_router(drawdown_budget_router, prefix="/api/v1")
 app.include_router(features_router, prefix="/api/v1")
-app.include_router(features2_router, prefix="/api/v1")
+app.include_router(extended_features_router, prefix="/api/v1")
 app.include_router(futures_testnet_router, prefix="/api/v1")
 app.include_router(multi_exchange_router, prefix="/api/v1")
 app.include_router(oi_momentum_router, prefix="/api/v1")
 app.include_router(dark_pool_router, prefix="/api/v1")
 app.include_router(ai_commentary_router, prefix="/api/v1")
 app.include_router(news_backtester_router, prefix="/api/v1")
+app.include_router(stop_loss_optimizer_router, prefix="/api/v1")
+app.include_router(trade_screener_router, prefix="/api/v1")
+app.include_router(ab_backtester_router, prefix="/api/v1")
+app.include_router(webhooks_router, prefix="/api/v1")
 
 
 # Health & status
@@ -552,7 +450,24 @@ async def login_for_access_token(body: _TokenRequest) -> _TokenResponse:
 # WebSocket
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    """WebSocket endpoint for real-time signal/regime/sentiment updates."""
+    """WebSocket endpoint for real-time signal/regime/sentiment updates.
+
+    Accepts an optional ``token`` query parameter for authentication.
+    In development mode, no token is required.
+    """
+    # Optional token validation — reject unauthenticated connections in production
+    if app_settings.ENVIRONMENT == "production":
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required")
+            return
+        try:
+            from app.core.auth import _decode_token
+            _decode_token(token)
+        except Exception:
+            await websocket.close(code=4001, reason="Invalid or expired token")
+            return
+
     await manager.connect(websocket)
     try:
         while True:

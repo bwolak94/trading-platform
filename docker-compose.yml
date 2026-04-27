@@ -89,13 +89,32 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      # Mount beat schedule to a named volume so it's not tracked in git
+      - celerybeat_data:/tmp/celerybeat
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.tasks inspect ping --timeout 10"]
       interval: 30s
       timeout: 15s
       retries: 3
       start_period: 30s
-    command: celery -A app.tasks beat --loglevel=info
+    command: celery -A app.tasks beat --loglevel=info --schedule /tmp/celerybeat/celerybeat-schedule
+
+  # Dead-letter queue worker — processes tasks that exhausted all retries
+  celery-dlq-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trading-celery-dlq
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks worker --queues=dlq --loglevel=warning --concurrency=1
 
   frontend:
     build:
@@ -112,3 +131,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  celerybeat_data:

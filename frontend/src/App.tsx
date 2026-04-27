@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { WebSocketProvider } from "./contexts/WebSocketContext";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AgentPanel } from "./components/Dashboard/AgentPanel";
 import { Dashboard } from "./components/Dashboard/Dashboard";
@@ -12,10 +13,13 @@ import { SettingsPage } from "./pages/Settings";
 import { ScreenerPage } from "./pages/Screener";
 import { TradeHistoryPage } from "./pages/TradeHistory";
 
+// A8: gcTime extended to 10 min so long-lived tabs retain data in memory and
+// avoid redundant refetches (default is 5 min).
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
+      gcTime: 10 * 60 * 1000,
       retry: 2,
     },
   },
@@ -86,6 +90,7 @@ function App() {
   return (
     <ToastProvider>
       <QueryClientProvider client={queryClient}>
+      <WebSocketProvider>
         <div className="min-h-screen bg-background">
           {/* Navigation */}
           <nav className="border-b border-border px-4 py-3 md:px-6">
@@ -198,6 +203,7 @@ function App() {
             <ShortcutsModal onClose={() => setShowShortcuts(false)} navItems={navItems} />
           )}
         </div>
+      </WebSocketProvider>
       </QueryClientProvider>
     </ToastProvider>
   );

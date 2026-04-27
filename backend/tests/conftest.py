@@ -1,8 +1,29 @@
-"""Shared test fixtures."""
+"""Shared test fixtures and pytest configuration."""
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(scope="session")
+def app():
+    """Return the FastAPI application instance (session-scoped for speed)."""
+    from app.main import app as _app
+    return _app
+
+
+@pytest.fixture(scope="session")
+def client(app):
+    """Return a TestClient for the FastAPI app."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def sample_trades():
+    """A small list of synthetic Trade objects for backtesting tests."""
+    from app.backtesting.walk_forward import Trade
+    return [Trade(pnl_pct=2.0 if i % 2 == 0 else -1.0) for i in range(20)]

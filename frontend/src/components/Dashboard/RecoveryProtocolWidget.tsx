@@ -115,10 +115,10 @@ export default function RecoveryProtocolWidget() {
   const handleRefetch = useCallback(() => { void refetch(); }, [refetch]);
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
 
-  const style = data ? getStageStyle(data.stage.stage_name) : DEFAULT_STYLE;
+  const style = data?.stage ? getStageStyle(data.stage.stage_name) : DEFAULT_STYLE;
 
   // Progress within stage range
-  const stageFraction = data
+  const stageFraction = data?.stage
     ? Math.min(
         (data.current_drawdown_pct - data.stage.dd_min_pct) /
           Math.max(data.stage.dd_max_pct - data.stage.dd_min_pct, 0.01),
@@ -126,7 +126,7 @@ export default function RecoveryProtocolWidget() {
       )
     : 0;
 
-  const isKillSwitch = data?.stage.stage_name.toUpperCase().includes("KILL") ?? false;
+  const isKillSwitch = data?.stage?.stage_name.toUpperCase().includes("KILL") ?? false;
 
   return (
     <div className={`rounded-lg border ${style.border} bg-surface p-4`}>
@@ -177,7 +177,7 @@ export default function RecoveryProtocolWidget() {
 
       {isLoading && <RecoverySkeleton />}
 
-      {data && (
+      {data && data.stage && (
         <div className="space-y-4">
           {/* Kill switch banner */}
           {isKillSwitch && (
