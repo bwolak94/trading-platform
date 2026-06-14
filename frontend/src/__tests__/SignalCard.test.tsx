@@ -47,9 +47,9 @@ const SHORT_SIGNAL: Signal = {
 beforeEach(() => {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
-    json: async () => [
+    json: () => Promise.resolve([
       { close: 64000 }, { close: 64500 }, { close: 65000 },
-    ],
+    ]),
   } as Response);
 });
 
@@ -177,7 +177,7 @@ describe("SignalCard", () => {
   });
 
   describe("accessibility", () => {
-    it("sparkline has an aria-label", async () => {
+    it("sparkline has an aria-label", () => {
       // Give sparkline data time to be mocked and rendered
       render(<SignalCard signal={BASE_SIGNAL} />);
       // The SVG aria-label may not yet be there (loading state), just verify the card renders

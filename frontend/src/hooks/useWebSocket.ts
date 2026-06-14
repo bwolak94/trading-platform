@@ -11,7 +11,6 @@
  * useWebSocketContext() instead.
  */
 
-import { useCallback } from "react";
 import { useWebSocketContext } from "../contexts/WebSocketContext";
 import type { WSMessage } from "../types";
 
@@ -25,7 +24,7 @@ interface UseWebSocketReturn {
 }
 
 export function useWebSocket(): UseWebSocketReturn {
-  const { isConnected, subscribe, unsubscribe, lastBatch, lastMessageByType } =
+  const { isConnected, subscribe, unsubscribe, lastBatch } =
     useWebSocketContext();
 
   // Derive the "last message" as the most recent item in the batch for

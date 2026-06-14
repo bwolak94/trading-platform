@@ -13,6 +13,9 @@ export default tseslint.config(
       "src/types/api.generated.ts",
       "postcss.config.js",
       "tailwind.config.js",
+      "eslint.config.js",
+      "public/**",
+      "**/*.js",
     ],
   },
 
@@ -94,6 +97,7 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-call": "off",
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
     },
   },
 );

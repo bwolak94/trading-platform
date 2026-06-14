@@ -32,6 +32,8 @@ const MOCK_REGIME: RegimeData = {
   regime: "TREND_BULL",
   confidence: 0.88,
   started_at: new Date().toISOString(),
+  ended_at: null,
+  metadata: null,
 };
 
 // Reset store between tests

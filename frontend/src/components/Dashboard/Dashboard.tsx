@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { ErrorBoundary } from "../ui/ErrorBoundary";
 import {
   fetchActiveSignals,
@@ -8,8 +7,8 @@ import {
   resetKillSwitch,
   startSimulation,
   stopSimulation,
+  type SimulatedPosition,
 } from "../../api/client";
-import type { SimulatedPosition } from "../../api/client";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { useAppStore } from "../../store";
 import type { Signal } from "../../types";
@@ -147,21 +146,6 @@ const RiskOfRuinMeter = lazy(() =>
 const SignalReplayMode = lazy(() =>
   import("./SignalReplayMode").then((m) => ({ default: m.SignalReplayMode })),
 );
-const WalkForwardOptimizationUI = lazy(() => import("./WalkForwardOptimizationUI"));
-const TickByTickReplay = lazy(() => import("./TickByTickReplay"));
-const PaperVsLiveComparison = lazy(() => import("./PaperVsLiveComparison"));
-const SharpeDecompositionPanel = lazy(() => import("./SharpeDecompositionPanel"));
-const SignalConfidenceCalibrationCurve = lazy(() => import("./SignalConfidenceCalibrationCurve"));
-const SignalForwardTestTracker = lazy(() => import("./SignalForwardTestTracker"));
-const SignalInvalidationTracker = lazy(() => import("./SignalInvalidationTracker"));
-const ParameterSensitivityHeatmap = lazy(() => import("./ParameterSensitivityHeatmap"));
-const AlertWebhookDeliveryLog = lazy(() => import("./AlertWebhookDeliveryLog"));
-const ExpectedValueLedger = lazy(() => import("./ExpectedValueLedger"));
-const MarketImpactCalculator = lazy(() => import("./MarketImpactCalculator"));
-const MultiTimeframeSignalConsensus = lazy(() => import("./MultiTimeframeSignalConsensus"));
-const BreakevenStopPanel = lazy(() => import("./BreakevenStopPanel"));
-const TimeStopPanel = lazy(() => import("./TimeStopPanel"));
-const RiskBudgetDashboard = lazy(() => import("./RiskBudgetDashboard"));
 import { useNotificationBadge } from "../../hooks/useNotificationBadge";
 
 /* ── Section wrapper uses the shared ErrorBoundary from ui/ ─────────── */
@@ -185,6 +169,8 @@ function SectionErrorBoundary({
 type SideTab = "orderflow" | "chat";
 type ExtendedMainTab = "dashboard" | "positioning" | "bot" | "advanced";
 
+const MAIN_TABS: ExtendedMainTab[] = ["dashboard", "positioning", "bot", "advanced"];
+
 export function Dashboard() {
   const { isConnected, lastMessage, subscribe } = useWebSocket();
   const {
@@ -199,12 +185,12 @@ export function Dashboard() {
   const [extendedTab, setExtendedTab] = useState<ExtendedMainTab>(storeMainTab);
 
   const activeMainTab = extendedTab;
-  const setActiveMainTab = (tab: ExtendedMainTab) => {
+  const setActiveMainTab = useCallback((tab: ExtendedMainTab) => {
     setExtendedTab(tab);
     if (tab === "dashboard" || tab === "positioning") {
       setStoreMainTab(tab);
     }
-  };
+  }, [setStoreMainTab]);
 
   // Theme management (applies data-theme attribute to document root)
   useTheme();
@@ -316,7 +302,6 @@ export function Dashboard() {
     ? activeSignals.filter((s) => s.asset.toLowerCase().includes(globalAssetFilter.toLowerCase()))
     : activeSignals;
 
-  const MAIN_TABS: ExtendedMainTab[] = ["dashboard", "positioning", "bot", "advanced"];
 
   useHotkeys({
     onTimeframeChange: useCallback((tf: string) => { setChartTf(tf); setMultiChartKey((k) => k + 1); }, []),
@@ -324,11 +309,11 @@ export function Dashboard() {
     onNextTab: useCallback(() => {
       const next = MAIN_TABS[(MAIN_TABS.indexOf(activeMainTab) + 1) % MAIN_TABS.length];
       if (next) setActiveMainTab(next);
-    }, [activeMainTab]),
+    }, [activeMainTab, setActiveMainTab]),
     onPrevTab: useCallback(() => {
       const prev = MAIN_TABS[(MAIN_TABS.indexOf(activeMainTab) + MAIN_TABS.length - 1) % MAIN_TABS.length];
       if (prev) setActiveMainTab(prev);
-    }, [activeMainTab]),
+    }, [activeMainTab, setActiveMainTab]),
   });
 
   useEffect(() => { if (signalsQuery.data) setActiveSignals(signalsQuery.data.data); }, [signalsQuery.data, setActiveSignals]);
@@ -344,7 +329,7 @@ export function Dashboard() {
     if (lastMessage.type === "NEW_SIGNAL") addSignal(lastMessage.payload as unknown as Signal);
     if (lastMessage.type === "KILL_SWITCH_TRIGGERED") {
       setSystemPaused(true);
-      const dd = lastMessage.payload["drawdown_pct"];
+      const dd = lastMessage.payload.drawdown_pct;
       if (typeof dd === "number") setDrawdownPct(dd);
     }
   }, [lastMessage, addSignal, setSystemPaused, setDrawdownPct]);
@@ -429,7 +414,7 @@ export function Dashboard() {
           </button>
           <button
             type="button"
-            onClick={() => setShowShortcutsHelp(true)}
+            onClick={() => { setShowShortcutsHelp(true); }}
             className="rounded border border-border/50 px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Show keyboard shortcuts"
             title="Keyboard shortcuts (?)"
@@ -438,7 +423,7 @@ export function Dashboard() {
           </button>
           <button
             type="button"
-            onClick={() => setShowSettings(true)}
+            onClick={() => { setShowSettings(true); }}
             className="rounded border border-border/50 p-1.5 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Open settings"
             title="Settings"
@@ -477,7 +462,7 @@ export function Dashboard() {
             id="global-asset-filter"
             type="text"
             value={globalAssetFilter}
-            onChange={(e) => setGlobalAssetFilter(e.target.value)}
+            onChange={(e) => { setGlobalAssetFilter(e.target.value); }}
             placeholder="BTC, ETH…"
             className="w-24 rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Filter signals by asset"
@@ -485,7 +470,7 @@ export function Dashboard() {
           {globalAssetFilter && (
             <button
               type="button"
-              onClick={() => setGlobalAssetFilter("")}
+              onClick={() => { setGlobalAssetFilter(""); }}
               className="text-gray-500 hover:text-gray-300 text-xs"
               aria-label="Clear asset filter"
             >
@@ -503,7 +488,7 @@ export function Dashboard() {
             type="button"
             role="tab"
             aria-selected={activeMainTab === tab}
-            onClick={() => setActiveMainTab(tab)}
+            onClick={() => { setActiveMainTab(tab); }}
             className={`min-h-[44px] shrink-0 px-5 py-2 text-sm font-medium transition-colors ${
               activeMainTab === tab
                 ? "border-b-2 border-accent text-white"
@@ -849,7 +834,7 @@ export function Dashboard() {
             {/* Mobile sidebar toggle */}
             <button
               type="button"
-              onClick={() => setSidebarVisible(!sidebarVisible)}
+              onClick={() => { setSidebarVisible(!sidebarVisible); }}
               className="mb-2 min-h-[44px] w-full rounded bg-surface px-3 py-2 text-xs font-medium text-gray-400 hover:text-white lg:hidden"
               aria-label={sidebarVisible ? "Hide sidebar panel" : "Show sidebar panel"}
               aria-expanded={sidebarVisible}
@@ -860,12 +845,12 @@ export function Dashboard() {
               <>
                 {/* Side tab selector */}
                 <div className="flex border-b border-border">
-                  <button type="button" onClick={() => setSideTab("orderflow")}
+                  <button type="button" onClick={() => { setSideTab("orderflow"); }}
                     className={`min-h-[44px] flex-1 py-2 text-xs font-medium ${sideTab === "orderflow" ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"}`}
                     aria-label="Order Flow tab">
                     Order Flow
                   </button>
-                  <button type="button" onClick={() => setSideTab("chat")}
+                  <button type="button" onClick={() => { setSideTab("chat"); }}
                     className={`min-h-[44px] flex-1 py-2 text-xs font-medium ${sideTab === "chat" ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"}`}
                     aria-label="AI Chat tab">
                     AI Chat
@@ -1023,7 +1008,7 @@ export function Dashboard() {
       {/* Position Detail Drawer — rendered at root level to escape layout containers */}
       <PositionDetailDrawer
         position={focusedPosition}
-        onClose={() => setFocusedPosition(null)}
+        onClose={() => { setFocusedPosition(null); }}
         onNavigateToChart={handleDrawerNavigate}
       />
 
@@ -1037,7 +1022,7 @@ export function Dashboard() {
                 <div className="flex items-center gap-2">
                   <select
                     value={exportFormat}
-                    onChange={(e) => setExportFormat(e.target.value as "csv" | "json")}
+                    onChange={(e) => { setExportFormat(e.target.value as "csv" | "json"); }}
                     className="min-h-[44px] rounded border border-border bg-background px-2 py-1 text-xs text-gray-400 focus:outline-none sm:min-h-0"
                     aria-label="Export format"
                   >
@@ -1082,7 +1067,7 @@ export function Dashboard() {
               systemStatus={systemPaused ? "PAUSED" : "ACTIVE"}
               drawdownPct={drawdownPct}
               maxDrawdownPct={settings?.max_drawdown_pct ?? 10}
-              onResetKillSwitch={handleResetKillSwitch}
+              onResetKillSwitch={() => { void handleResetKillSwitch(); }}
             />
             <RecoveryProtocolWidget />
             <StreakCircuitBreakerWidget />
@@ -1103,7 +1088,7 @@ export function Dashboard() {
         onStopBot={handleCommandPaletteStopBot}
       />
 
-      <ShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
+      <ShortcutsHelp open={showShortcutsHelp} onClose={() => { setShowShortcutsHelp(false); }} />
     </div>
   );
 }

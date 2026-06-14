@@ -30,7 +30,7 @@ export interface Signal {
   entry_price: number;
   stop_loss: number;
   take_profit_1: number;
-  take_profit_2: number;
+  take_profit_2: number | null;
   risk_reward: number;
   position_size_pct: number | null;
   technical_score: number | null;

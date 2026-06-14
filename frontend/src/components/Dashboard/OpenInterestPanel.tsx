@@ -27,8 +27,10 @@ import {
   fetchKlines,
   fetchOpenPositions,
   fetchClosedPositions,
+  type PositioningSnapshot,
+  type KlineData,
+  type SimulatedPosition,
 } from "../../api/client";
-import type { PositioningSnapshot, KlineData, SimulatedPosition } from "../../api/client";
 import { useAppStore } from "../../store";
 import { AssetSearchSelect } from "../ui/AssetSearchSelect";
 
@@ -197,7 +199,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
     function syncCrosshair(src: IChartApi, targets: { chart: IChartApi; series: AnySeries }[]) {
       src.subscribeCrosshairMove((p) => {
         targets.forEach(({ chart, series }) => {
-          if (p.time) chart.setCrosshairPosition(0, p.time as Time, series);
+          if (p.time) chart.setCrosshairPosition(0, p.time, series);
           else chart.clearCrosshairPosition();
         });
       });
@@ -210,7 +212,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
     // ── Time range sync ─────────────────────────────────────────────────
     function syncRange(src: IChartApi, others: IChartApi[]) {
       src.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-        if (range) others.forEach((o) => o.timeScale().setVisibleLogicalRange(range));
+        if (range) others.forEach((o) => { o.timeScale().setVisibleLogicalRange(range); });
       });
     }
 
@@ -335,7 +337,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
           color: lv.side === "long" ? "#ef4444" : "#22c55e",
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
-          title: `${lv.side.toUpperCase()} ${lv.leverage}x`,
+          title: `${lv.side.toUpperCase()} ${String(lv.leverage)}x`,
           axisLabelVisible: true,
         });
         c.priceLines.push(pl);
@@ -365,7 +367,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
     );
 
     relevant.forEach((sig) => {
-      const levels: { price: number; color: string; title: string; style: LineStyle }[] = [
+      const levels: { price: number | null; color: string; title: string; style: LineStyle }[] = [
         {
           price: sig.entry_price,
           color: "#f59e0b",   // amber — entry
@@ -393,7 +395,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
       ];
 
       levels.forEach(({ price, color, title, style }) => {
-        if (!price || price <= 0) return;
+        if (price === null || price <= 0) return;
         try {
           const pl = c.candle.createPriceLine({
             price,
@@ -451,19 +453,19 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
         position: pos.direction === "LONG" ? "belowBar" : "aboveBar",
         color: pos.direction === "LONG" ? "#22c55e99" : "#ef444499",
         shape: pos.direction === "LONG" ? "arrowUp" : "arrowDown",
-        text: `${pos.direction}`,
+        text: pos.direction,
         size: 1,
       });
 
       if (pos.closed_at) {
         const closeT = Math.floor(new Date(pos.closed_at).getTime() / 1000) as Time;
-        const profitable = (pos.pnl_pct ?? 0) >= 0;
+        const profitable = pos.pnl_pct >= 0;
         markers.push({
           time: closeT,
           position: pos.direction === "LONG" ? "aboveBar" : "belowBar",
           color: profitable ? "#22c55e" : "#ef4444",
           shape: "circle",
-          text: `${profitable ? "+" : ""}${(pos.pnl_pct ?? 0).toFixed(1)}%`,
+          text: `${profitable ? "+" : ""}${pos.pnl_pct.toFixed(1)}%`,
           size: 1,
         });
       }
@@ -522,7 +524,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
       <div className="flex flex-wrap items-center gap-3">
         <AssetSearchSelect
           value={symbol}
-          onChange={(v) => setSymbol(v)}
+          onChange={(v) => { setSymbol(v); }}
           aria-label="Select asset for positioning view"
           includeForex={false}
         />
@@ -536,7 +538,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
             <button
               key={p}
               type="button"
-              onClick={() => setPeriod(p)}
+              onClick={() => { setPeriod(p); }}
               aria-pressed={period === p}
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                 period === p
@@ -591,7 +593,7 @@ export function OpenInterestPanel({ defaultSymbol = "BTCUSDT" }: OpenInterestPan
                 })}`
               : ""}
             {positioning && positioning.liquidation_levels.length > 0
-              ? ` · ${positioning.liquidation_levels.length} liq. levels`
+              ? ` · ${String(positioning.liquidation_levels.length)} liq. levels`
               : ""}
           </span>
           {/* Open position indicator */}
