@@ -6,10 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   # Backend: lint, type-check, tests, backtest validation
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   backend:
     name: Backend (Python)
     runs-on: ubuntu-latest
@@ -43,7 +47,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://user:pass@localhost:5432/trading_ai
       REDIS_URL: redis://localhost:6379/0
       ENVIRONMENT: development
-      SECRET_KEY: ci-test-secret
+      SECRET_KEY: ci-test-secret-that-is-at-least-32-chars-long
 
     steps:
       - uses: actions/checkout@v4
@@ -58,17 +62,73 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run Ruff linter
         working-directory: backend
-        run: pytest tests/ -v --tb=short
+        run: |
+          pip install ruff
+          ruff check app/ --output-format=github
+
+      - name: Run tests with coverage
+        working-directory: backend
+        run: |
+          pytest tests/ -v --tb=short \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=50
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: backend/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
 
       - name: Validate backtest outputs
         working-directory: backend
         run: python scripts/validate_backtest.py
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # Frontend: type-check, lint, build, bundle size
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
+  # Security: Bandit (Python SAST) + Trivy (container vuln scan)
+  # ──────────────────────────────────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bandit — Python SAST
+        working-directory: backend
+        run: |
+          pip install bandit
+          bandit -r app/ -ll -x app/tests --format github
+
+      - name: Trivy — filesystem vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Frontend: type-check, lint, test, build, bundle size
+  # ──────────────────────────────────────────────────────────────────────────
   frontend:
     name: Frontend (TypeScript)
     runs-on: ubuntu-latest
@@ -80,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -93,8 +153,19 @@ jobs:
       - name: TypeScript type-check
         run: npx tsc --noEmit
 
-      - name: Lint
+      - name: ESLint
         run: npm run lint
+
+      - name: Unit tests (Vitest)
+        run: npm test -- --reporter=verbose --coverage
+
+      - name: Upload frontend coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: frontend/coverage/lcov.info
+          flags: frontend
+          fail_ci_if_error: false
 
       - name: Build
         run: npm run build
@@ -102,9 +173,9 @@ jobs:
       - name: Bundle size check
         run: npm run size
 
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   # Lighthouse CI — frontend performance regression guard
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
   lighthouse:
     name: Lighthouse CI
     runs-on: ubuntu-latest
@@ -117,7 +188,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -134,3 +205,36 @@ jobs:
         run: npx lhci autorun
         env:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Docker build — verify images build cleanly (no push on PRs)
+  # ──────────────────────────────────────────────────────────────────────────
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: trading-backend:${{ github.sha }}
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: trading-frontend:${{ github.sha }}

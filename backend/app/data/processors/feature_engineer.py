@@ -98,7 +98,10 @@ def _validate_columns(df: pd.DataFrame) -> None:
         last_ts = df["timestamp"].iloc[-1]
         if hasattr(last_ts, "timestamp"):
             from datetime import datetime, timezone
-            age_minutes = (datetime.now(timezone.utc) - last_ts.to_pydatetime()).total_seconds() / 60
+            last_dt = last_ts.to_pydatetime()
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            age_minutes = (datetime.now(timezone.utc) - last_dt).total_seconds() / 60
             if age_minutes > 30:
                 logger.warning("STALE DATA: Last candle is %.0f minutes old", age_minutes)
 
