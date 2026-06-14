@@ -93,7 +93,7 @@ describe("SignalCard", () => {
 
     it("renders confidence percentage", () => {
       render(<SignalCard signal={BASE_SIGNAL} />);
-      expect(screen.getByText(/78%/)).toBeInTheDocument();
+      expect(screen.getAllByText(/78%/).length).toBeGreaterThan(0);
     });
 
     it("renders ACTIVE status badge", () => {
@@ -108,9 +108,9 @@ describe("SignalCard", () => {
 
     it("renders first 3 factors", () => {
       render(<SignalCard signal={BASE_SIGNAL} />);
-      expect(screen.getByText("Trend")).toBeInTheDocument();
-      expect(screen.getByText("Momentum")).toBeInTheDocument();
-      expect(screen.getByText("Volume")).toBeInTheDocument();
+      expect(screen.getAllByText("Trend").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Momentum").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Volume").length).toBeGreaterThan(0);
     });
 
     it("renders duplicate badge when isDuplicate=true", () => {
@@ -142,7 +142,7 @@ describe("SignalCard", () => {
     it("calls onNavigate when clicked", () => {
       const handleNavigate = vi.fn();
       render(<SignalCard signal={BASE_SIGNAL} onNavigate={handleNavigate} />);
-      const card = screen.getByRole("button");
+      const card = screen.getByRole("button", { name: /Navigate chart to BTCUSDT/i });
       fireEvent.click(card);
       expect(handleNavigate).toHaveBeenCalledWith("BTCUSDT");
     });
@@ -150,7 +150,7 @@ describe("SignalCard", () => {
     it("calls onNavigate when Enter is pressed", () => {
       const handleNavigate = vi.fn();
       render(<SignalCard signal={BASE_SIGNAL} onNavigate={handleNavigate} />);
-      const card = screen.getByRole("button");
+      const card = screen.getByRole("button", { name: /Navigate chart to BTCUSDT/i });
       fireEvent.keyDown(card, { key: "Enter" });
       expect(handleNavigate).toHaveBeenCalledWith("BTCUSDT");
     });
@@ -181,7 +181,7 @@ describe("SignalCard", () => {
       // Give sparkline data time to be mocked and rendered
       render(<SignalCard signal={BASE_SIGNAL} />);
       // The SVG aria-label may not yet be there (loading state), just verify the card renders
-      expect(screen.getByText(/78%/)).toBeInTheDocument();
+      expect(screen.getAllByText(/78%/).length).toBeGreaterThan(0);
     });
 
     it("copy button has aria-label", () => {
