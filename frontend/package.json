@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "generate:types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.generated.ts",
-    "prepare": "husky"
+    "prepare": "cd .. && husky"
   },
   "size-limit": [
     {
