@@ -9,26 +9,40 @@ def anyio_backend():
     return "asyncio"
 
 
-@pytest.fixture(autouse=True)
-def dispose_db_pool():
-    """Dispose the async engine pool after every test.
+@pytest.fixture(scope="session", autouse=True)
+def use_null_pool():
+    """Replace the SQLAlchemy async engine with a NullPool variant for tests.
 
-    Sync TestClient tests each spin up their own anyio event loop in a thread.
-    When a sync test finishes, that loop closes — but asyncpg connections
-    remain pooled against the now-dead loop.  The next truly-async test
-    (pytest-asyncio event loop) then hits "Future attached to a different
-    loop" when pool_pre_ping tries to reuse those stale connections.
+    NullPool creates a brand-new asyncpg connection per DB request — nothing
+    is ever cached in a pool.  This eliminates the "Future attached to a
+    different loop" error that occurs when:
 
-    AsyncEngine.dispose() is synchronous in SQLAlchemy 2.x — it resets the
-    pool immediately without needing an event loop.  Using a sync fixture
-    means it runs correctly for both sync and async tests.
+      1. Sync TestClient tests run the ASGI app in a worker thread, which
+         spins up its own asyncio event loop.
+      2. That loop closes after the test.
+      3. A later async test (pytest-asyncio event loop) asks the pool for a
+         connection and gets one whose internal Future is bound to the now-
+         dead thread loop.
+
+    With NullPool, step 3 always creates a fresh connection on the active
+    loop, so event-loop identity is never an issue.
     """
+    from sqlalchemy.pool import NullPool
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.core import database
+    from app.core.config import settings
+
+    test_engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+    test_session_factory = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    # Patch module-level names that get_db() reads at call-time (not import-time)
+    database.engine = test_engine
+    database.async_session = test_session_factory
+
     yield
-    try:
-        from app.core.database import engine
-        engine.dispose()
-    except Exception:
-        pass
 
 
 @pytest.fixture(scope="session")
