@@ -9,6 +9,27 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+async def dispose_db_pool():
+    """Dispose the async engine pool after every test.
+
+    Sync TestClient tests each spin up their own anyio event loop in a thread.
+    When a sync test finishes, that loop closes — but asyncpg connections
+    remain pooled against the now-dead loop.  The next truly-async test
+    (pytest-asyncio event loop) then hits "Future attached to a different
+    loop" when pool_pre_ping tries to reuse those stale connections.
+
+    Disposing the pool after every test forces a fresh connection on the
+    next request, bound to whatever loop is currently active.
+    """
+    yield
+    try:
+        from app.core.database import engine
+        await engine.dispose()
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="session")
 def app():
     """Return the FastAPI application instance (session-scoped for speed)."""
