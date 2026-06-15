@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -271,9 +271,9 @@ class TestMarketIndicatorsEndpoint:
             fake_klines.append([t, str(o), str(h), str(l), str(c), str(v),
                                 t + 3600_000, "0", 0, "0", "0", "0"])
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = fake_klines
-        mock_response.raise_for_status = lambda: None
+        mock_response.raise_for_status.return_value = None
 
         mock_client_instance = AsyncMock()
         mock_client_instance.get.return_value = mock_response
@@ -311,9 +311,9 @@ class TestMarketKlinesEndpoint:
             fake_klines.append([t, str(c - 10), str(c + 20), str(c - 20), str(c), str(500),
                                 t + 3600_000, "0", 0, "0", "0", "0"])
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = fake_klines
-        mock_response.raise_for_status = lambda: None
+        mock_response.raise_for_status.return_value = None
 
         mock_client_instance = AsyncMock()
         mock_client_instance.get.return_value = mock_response
@@ -363,10 +363,10 @@ class TestAnalyzeRunEndpoint:
             fake_klines.append([t, str(o), str(h), str(l), str(c), str(v),
                                 t + 14400_000, "0", 0, "0", "0", "0"])
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = fake_klines
         mock_response.status_code = 200
-        mock_response.raise_for_status = lambda: None
+        mock_response.raise_for_status.return_value = None
 
         mock_client_instance = AsyncMock()
         mock_client_instance.get.return_value = mock_response
@@ -446,9 +446,9 @@ class TestAsyncEndpoints:
             fake_klines.append([t, str(o), str(h), str(low), str(c), str(v),
                                 t + 3600_000, "0", 0, "0", "0", "0"])
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = fake_klines
-        mock_response.raise_for_status = lambda: None
+        mock_response.raise_for_status.return_value = None
 
         mock_client_instance = AsyncMock()
         mock_client_instance.get.return_value = mock_response
@@ -482,9 +482,9 @@ class TestAsyncEndpoints:
             fake_klines.append([t, str(c - 10), str(c + 20), str(c - 20), str(c), str(500),
                                 t + 3600_000, "0", 0, "0", "0", "0"])
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = fake_klines
-        mock_response.raise_for_status = lambda: None
+        mock_response.raise_for_status.return_value = None
 
         mock_client_instance = AsyncMock()
         mock_client_instance.get.return_value = mock_response
@@ -528,10 +528,10 @@ class TestAsyncEndpoints:
             fake_klines.append([t, str(o), str(h), str(low), str(c), str(v),
                                 t + 14400_000, "0", 0, "0", "0", "0"])
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.json.return_value = fake_klines
         mock_response.status_code = 200
-        mock_response.raise_for_status = lambda: None
+        mock_response.raise_for_status.return_value = None
 
         mock_client_instance = AsyncMock()
         mock_client_instance.get.return_value = mock_response
