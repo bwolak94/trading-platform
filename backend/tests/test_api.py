@@ -109,7 +109,7 @@ class TestMarketEndpoints:
         with TestClient(app) as client:
             resp = client.get("/api/v1/market/calendar")
             assert resp.status_code == 200
-            assert "data" in resp.json()
+            assert "events" in resp.json()
 
 
 class TestBacktestEndpoints:
