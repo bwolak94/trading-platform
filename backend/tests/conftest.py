@@ -10,7 +10,7 @@ def anyio_backend():
 
 
 @pytest.fixture(autouse=True)
-async def dispose_db_pool():
+def dispose_db_pool():
     """Dispose the async engine pool after every test.
 
     Sync TestClient tests each spin up their own anyio event loop in a thread.
@@ -19,13 +19,14 @@ async def dispose_db_pool():
     (pytest-asyncio event loop) then hits "Future attached to a different
     loop" when pool_pre_ping tries to reuse those stale connections.
 
-    Disposing the pool after every test forces a fresh connection on the
-    next request, bound to whatever loop is currently active.
+    AsyncEngine.dispose() is synchronous in SQLAlchemy 2.x — it resets the
+    pool immediately without needing an event loop.  Using a sync fixture
+    means it runs correctly for both sync and async tests.
     """
     yield
     try:
         from app.core.database import engine
-        await engine.dispose()
+        engine.dispose()
     except Exception:
         pass
 
