@@ -226,7 +226,7 @@ export function IntelligencePanel() {
           <button
             key={t.key}
             type="button"
-            onClick={() => setTab(t.key)}
+            onClick={() => { setTab(t.key); }}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
               tab === t.key
                 ? "border-b-2 border-accent text-white"

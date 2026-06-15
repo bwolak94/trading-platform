@@ -1,29 +1,18 @@
 """User settings endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.user_settings import UserSettings
+from app.schemas.market import SettingsUpdateRequest
 from app.schemas.signal import UserSettingsResponse
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 # Default user ID for single-user MVP
 DEFAULT_USER_ID = "default"
-
-
-class SettingsUpdateRequest(BaseModel):
-    """Partial update for user settings."""
-
-    capital: float | None = None
-    risk_per_trade_pct: float | None = None
-    max_drawdown_pct: float | None = None
-    telegram_chat_id: str | None = None
-    enabled_assets: list[str] | None = None
-    notifications_enabled: bool | None = None
 
 
 @router.get("", response_model=UserSettingsResponse)

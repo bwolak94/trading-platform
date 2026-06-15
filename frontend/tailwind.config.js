@@ -4,13 +4,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: "#0d1117",
-        surface: "#161b22",
-        border: "#30363d",
-        accent: "#2563eb",
-        bullish: "#00d4aa",
-        bearish: "#ff4757",
-        warning: "#ffb347",
+        background: "var(--color-background)",
+        surface: "var(--color-surface)",
+        border: "var(--color-border)",
+        accent: "var(--color-accent)",
+        bullish: "var(--color-bullish)",
+        bearish: "var(--color-bearish)",
+        warning: "var(--color-warning)",
+        foreground: "var(--color-foreground)",
+        muted: "var(--color-muted)",
       },
       fontFamily: {
         mono: ["JetBrains Mono", "monospace"],

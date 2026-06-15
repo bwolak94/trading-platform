@@ -14,6 +14,7 @@ import {
   runBacktest,
 } from "../api/client";
 import type { BacktestRequest, BacktestResult } from "../types";
+import { backtestFormSchema } from "../lib/validation";
 
 const STRATEGIES = [
   { value: "trend_following", label: "Trend Following" },
@@ -37,6 +38,7 @@ export function BacktestPage() {
   });
 
   const [selectedResult, setSelectedResult] = useState<BacktestResult | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const resultsQuery = useQuery({
     queryKey: ["backtestResults"],
@@ -52,6 +54,30 @@ export function BacktestPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationErrors({});
+
+    const result = backtestFormSchema.safeParse({
+      strategy: form.strategy,
+      asset: form.asset,
+      timeframe: form.timeframe,
+      start_date: form.from_date,
+      end_date: form.to_date,
+      initial_capital: form.initial_capital,
+      risk_per_trade_pct: form.risk_per_trade_pct,
+    });
+
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path.join(".");
+        if (!errors[key]) {
+          errors[key] = issue.message;
+        }
+      }
+      setValidationErrors(errors);
+      return;
+    }
+
     runMutation.mutate(form);
   };
 
@@ -75,43 +101,43 @@ export function BacktestPage() {
           label="Strategy"
           value={form.strategy}
           options={STRATEGIES}
-          onChange={(v) => updateField("strategy", v)}
+          onChange={(v) => { updateField("strategy", v); }}
         />
         <SelectField
           label="Asset"
           value={form.asset}
           options={ASSETS.map((a) => ({ value: a, label: a }))}
-          onChange={(v) => updateField("asset", v)}
+          onChange={(v) => { updateField("asset", v); }}
         />
         <SelectField
           label="Timeframe"
           value={form.timeframe}
           options={TIMEFRAMES.map((t) => ({ value: t, label: t }))}
-          onChange={(v) => updateField("timeframe", v)}
+          onChange={(v) => { updateField("timeframe", v); }}
         />
         <InputField
           label="Capital ($)"
           type="number"
           value={form.initial_capital}
-          onChange={(v) => updateField("initial_capital", Number(v))}
+          onChange={(v) => { updateField("initial_capital", Number(v)); }}
         />
         <InputField
           label="From"
           type="date"
           value={form.from_date}
-          onChange={(v) => updateField("from_date", v)}
+          onChange={(v) => { updateField("from_date", v); }}
         />
         <InputField
           label="To"
           type="date"
           value={form.to_date}
-          onChange={(v) => updateField("to_date", v)}
+          onChange={(v) => { updateField("to_date", v); }}
         />
         <InputField
           label="Risk %"
           type="number"
           value={form.risk_per_trade_pct}
-          onChange={(v) => updateField("risk_per_trade_pct", Number(v))}
+          onChange={(v) => { updateField("risk_per_trade_pct", Number(v)); }}
         />
         <div className="flex items-end">
           <button
@@ -124,6 +150,17 @@ export function BacktestPage() {
           </button>
         </div>
       </form>
+
+      {Object.keys(validationErrors).length > 0 && (
+        <div className="rounded-lg border border-bearish/30 bg-bearish/10 p-4">
+          <p className="mb-1 text-sm font-medium text-bearish">Validation errors:</p>
+          <ul className="list-inside list-disc text-sm text-bearish/80">
+            {Object.entries(validationErrors).map(([field, message]) => (
+              <li key={field}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {runMutation.isSuccess && (
         <p className="text-sm text-bullish">
@@ -157,7 +194,7 @@ export function BacktestPage() {
               {(resultsQuery.data ?? []).map((r: BacktestResult) => (
                 <tr
                   key={r.id}
-                  onClick={() => setSelectedResult(r)}
+                  onClick={() => { setSelectedResult(r); }}
                   className="cursor-pointer border-b border-border hover:bg-background"
                 >
                   <td className="px-4 py-2 text-white">{r.strategy_name}</td>
@@ -222,7 +259,7 @@ export function BacktestPage() {
           </ResponsiveContainer>
           <div className="mt-3 text-right">
             <button
-              onClick={() => exportCSV(selectedResult)}
+              onClick={() => { exportCSV(selectedResult); }}
               type="button"
               className="rounded border border-border px-3 py-1 text-xs text-gray-400 hover:bg-background"
               aria-label="Export results as CSV"
@@ -254,7 +291,7 @@ function SelectField({
       <label className="mb-1 block text-xs text-gray-500">{label}</label>
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); }}
         className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
         aria-label={label}
       >
@@ -285,7 +322,7 @@ function InputField({
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); }}
         className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
         aria-label={label}
       />

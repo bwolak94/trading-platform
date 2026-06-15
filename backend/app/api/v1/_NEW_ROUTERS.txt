@@ -1,0 +1,10 @@
+New routers that need to be registered in backend/app/main.py:
+
+1. monitoring router
+   File:   backend/app/api/v1/monitoring.py
+   Import: from app.api.v1.monitoring import router as monitoring_router
+   Register: app.include_router(monitoring_router, prefix="/api/v1")
+
+   Endpoints added:
+     GET /api/v1/monitoring/tasks              — Celery task schedule overview
+     GET /api/v1/monitoring/health/detailed    — Detailed subsystem health check

@@ -69,18 +69,27 @@ class MonteCarloSimulator:
         trades: list[Trade],
         iterations: int = 1000,
         initial_capital: float = 10000.0,
+        seed: int | None = None,
     ) -> MonteCarloResult:
         """Run Monte Carlo simulation.
 
         Shuffles the order of trades N times, builds an equity curve
         for each iteration, and calculates probability of ruin
         and percentile distributions.
+
+        Args:
+            trades: Historical trade list.
+            iterations: Number of random permutations to simulate.
+            initial_capital: Starting equity value.
+            seed: Optional RNG seed for reproducible results (useful in tests).
         """
         if not trades:
             logger.warning("No trades provided for Monte Carlo simulation")
             return MonteCarloResult(
                 iterations=iterations, initial_capital=initial_capital
             )
+
+        rng = np.random.default_rng(seed)
 
         pnl_pcts = np.array([t.pnl_pct for t in trades])
         num_trades = len(pnl_pcts)
@@ -95,8 +104,8 @@ class MonteCarloSimulator:
         all_curves = np.zeros((iterations, num_trades + 1))
 
         for i in range(iterations):
-            # Shuffle trade order
-            shuffled = np.random.permutation(pnl_pcts)
+            # Shuffle trade order using the seeded RNG
+            shuffled = rng.permutation(pnl_pcts)
 
             # Build equity curve
             equity_curve = self._build_equity_curve(shuffled, initial_capital)

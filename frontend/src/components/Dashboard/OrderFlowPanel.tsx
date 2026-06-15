@@ -56,8 +56,7 @@ export function OrderFlowPanel({ asset, timeframe }: OrderFlowPanelProps) {
     );
   }
 
-  const latestWindow = data.windows.length > 0 ? data.windows[data.windows.length - 1] : null;
-  const prevWindow = data.windows.length > 1 ? data.windows[data.windows.length - 2] : null;
+  const latestWindow = data.windows.at(-1) ?? null;
 
   // Direction prediction based on order flow
   const prediction = predictDirection(data, latestWindow);

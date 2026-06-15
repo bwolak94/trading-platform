@@ -8,7 +8,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import httpx
-import numpy as np
 import pandas as pd
 
 from app.data.processors.feature_engineer import compute_features
@@ -317,9 +316,9 @@ class DayTradingEngine:
         atr = float(last.get("atr_14", close * 0.005))
         rsi = float(last.get("rsi_14", 50))
         adx = float(last.get("adx_14", 0))
-        ema20 = float(last.get("ema_20", close))
-        bb_upper = float(last.get("bb_upper", close + atr))
-        bb_lower = float(last.get("bb_lower", close - atr))
+        float(last.get("ema_20", close))
+        float(last.get("bb_upper", close + atr))
+        float(last.get("bb_lower", close - atr))
         vol_ratio = float(last.get("volume_vs_avg", 1))
 
         # Session levels
@@ -327,7 +326,7 @@ class DayTradingEngine:
 
         # Order blocks on M5
         obs = find_order_blocks(m5_featured, lookback=30)
-        fvgs = find_fair_value_gaps(m5_featured, lookback=30)
+        find_fair_value_gaps(m5_featured, lookback=30)
 
         # Calculate cumulative delta from M1 (buy vol - sell vol proxy)
         m1_delta = sum(

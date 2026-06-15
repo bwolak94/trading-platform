@@ -32,7 +32,7 @@ export function Heatmap({ asset, interval }: HeatmapProps) {
     const timer = setInterval(() => {
       fetchIndicators(asset, interval, 300).then(setData).catch(() => {});
     }, 60_000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); };
   }, [asset, interval]);
 
   if (loading) {
@@ -60,7 +60,7 @@ export function Heatmap({ asset, interval }: HeatmapProps) {
           { id: "liquidation" as const, label: "Liquidation Heatmap" },
           { id: "levels" as const, label: "Order Blocks & FVGs" },
         ]).map((t) => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+          <button key={t.id} type="button" onClick={() => { setTab(t.id); }}
             className={`px-4 py-2.5 text-xs font-medium transition-colors ${
               tab === t.id ? "border-b-2 border-accent text-white" : "text-gray-400 hover:text-gray-200"
             }`} aria-label={t.label}>{t.label}</button>
@@ -92,7 +92,7 @@ function VolumeProfileView({ profile, poc, price }: {
         <span>Volume (Buy / Sell)</span>
       </div>
       {sorted.map((bucket, i) => {
-        const isPoc = poc && bucket.price_mid === poc.price_mid;
+        const isPoc = bucket.price_mid === poc?.price_mid;
         const isNearPrice = Math.abs(bucket.price_mid - price) / price < 0.005;
         const buyPct = bucket.total_volume > 0 ? (bucket.buy_volume / bucket.total_volume) * 100 : 50;
 
@@ -157,7 +157,7 @@ function LiquidationView({ levels, price }: { levels: LiquidationLevel[]; price:
   );
 }
 
-function LiqBar({ liq, price, side }: { liq: LiquidationLevel; price: number; side: string }) {
+function LiqBar({ liq, price: _price, side }: { liq: LiquidationLevel; price: number; side: string }) {
   const color = side === "short" ? "bg-bearish" : "bg-bullish";
   return (
     <div className="flex items-center gap-3 rounded bg-background px-2 py-1.5">
@@ -175,7 +175,7 @@ function LiqBar({ liq, price, side }: { liq: LiquidationLevel; price: number; si
 
 /* --- Order Blocks & FVGs --- */
 
-function LevelsView({ obs, fvgs, price }: { obs: OrderBlockData[]; fvgs: FVGData[]; price: number }) {
+function LevelsView({ obs, fvgs, price: _price }: { obs: OrderBlockData[]; fvgs: FVGData[]; price: number }) {
   const activeObs = obs.filter((ob) => ob.status === "active").slice(-8);
   const activeFvgs = fvgs.filter((f) => !f.filled).slice(-8);
 

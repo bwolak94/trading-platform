@@ -2,7 +2,6 @@
 
 import logging
 
-import numpy as np
 import pandas as pd
 
 from app.ai.strategies.base import BaseStrategy, MarketContext, SignalResult
@@ -48,11 +47,11 @@ class TrendFollowingStrategy(BaseStrategy):
 
         long_signal = self._check_long(df, last, context)
         if long_signal:
-            return self._build_signal(asset, timeframe, last, "LONG", long_signal)
+            return self._build_signal(asset, timeframe, last, "LONG", long_signal, context)
 
         short_signal = self._check_short(df, last, context)
         if short_signal:
-            return self._build_signal(asset, timeframe, last, "SHORT", short_signal)
+            return self._build_signal(asset, timeframe, last, "SHORT", short_signal, context)
 
         return None
 
@@ -96,6 +95,18 @@ class TrendFollowingStrategy(BaseStrategy):
             return None
         factors.append({"name": "Volume Confirmation", "weight": 0.15, "score": min(volume_ratio / 2, 1.0), "label": "BULLISH"})
 
+        # Volume profile confirmation - better entries near high-volume nodes
+        obv_trend = last.get("obv", 0)
+        if obv_trend > 0 and volume_ratio > 1.0:
+            factors.append({"name": "OBV Confirming Trend", "weight": 0.1, "score": 0.75, "label": "BULLISH"})
+
+        # ADX divergence check: ADX declining while price moves strongly = weakening trend
+        if len(df) >= 5:
+            adx_slope = df["adx_14"].iloc[-1] - df["adx_14"].iloc[-5]
+            price_slope = (df["close"].iloc[-1] - df["close"].iloc[-5]) / df["close"].iloc[-5]
+            if adx_slope < 0 and abs(price_slope) > 0.02:
+                factors.append({"name": "ADX Divergence Warning", "weight": -0.1, "score": 0.3, "label": "CAUTION"})
+
         return {"factors": factors, "direction": "LONG"}
 
     def _check_short(
@@ -138,6 +149,13 @@ class TrendFollowingStrategy(BaseStrategy):
             return None
         factors.append({"name": "Volume Confirmation", "weight": 0.15, "score": min(volume_ratio / 2, 1.0), "label": "BEARISH"})
 
+        # ADX divergence check: ADX declining while price moves strongly = weakening trend
+        if len(df) >= 5:
+            adx_slope = df["adx_14"].iloc[-1] - df["adx_14"].iloc[-5]
+            price_slope = (df["close"].iloc[-1] - df["close"].iloc[-5]) / df["close"].iloc[-5]
+            if adx_slope < 0 and abs(price_slope) > 0.02:
+                factors.append({"name": "ADX Divergence Warning", "weight": -0.1, "score": 0.3, "label": "CAUTION"})
+
         return {"factors": factors, "direction": "SHORT"}
 
     def _build_signal(
@@ -147,17 +165,26 @@ class TrendFollowingStrategy(BaseStrategy):
         last: pd.Series,
         direction: str,
         check_result: dict,
+        context: MarketContext | None = None,
     ) -> SignalResult:
         """Build a SignalResult with entry, SL, TP levels."""
         close = float(last.get("close", 0))
         atr = float(last.get("atr_14", 0))
         ema50 = float(last.get("ema_50", 0))
 
+        # Dynamic SL adjustment based on regime confidence
+        regime_adj = 1.0
+        if context is not None:
+            if hasattr(context, 'regime_confidence') and context.regime_confidence < 60:
+                regime_adj = 1.2  # Widen SL in uncertain regime
+            elif hasattr(context, 'regime_confidence') and context.regime_confidence > 85:
+                regime_adj = 0.9  # Tighten in strong regime
+
         if direction == "LONG":
             # SL: below last swing low or EMA50 - 1 ATR
             stop_loss = min(
                 float(last.get("low", close - atr)),
-                ema50 - atr,
+                ema50 - atr * regime_adj,
             )
             risk = close - stop_loss
             tp1 = close + risk * self.TP1_MULTIPLIER
@@ -166,7 +193,7 @@ class TrendFollowingStrategy(BaseStrategy):
             # SL: above last swing high or EMA50 + 1 ATR
             stop_loss = max(
                 float(last.get("high", close + atr)),
-                ema50 + atr,
+                ema50 + atr * regime_adj,
             )
             risk = stop_loss - close
             tp1 = close - risk * self.TP1_MULTIPLIER
@@ -187,6 +214,12 @@ class TrendFollowingStrategy(BaseStrategy):
             risk_reward=round(risk_reward, 2),
             factors=check_result["factors"],
             strategy_name=self.name,
+            trailing_stop_pct=0.015,
+            partial_tp_schedule=[
+                {"pct_close": 25, "price": round(tp1, 8), "label": "TP1"},
+                {"pct_close": 25, "price": round((tp1 + tp2) / 2, 8), "label": "TP1.5"},
+                {"pct_close": 50, "price": round(tp2, 8), "label": "TP2"},
+            ],
         )
 
     def _calculate_confidence(self, factors: list[dict], last: pd.Series) -> float:

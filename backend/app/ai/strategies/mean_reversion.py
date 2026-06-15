@@ -2,7 +2,6 @@
 
 import logging
 
-import numpy as np
 import pandas as pd
 
 from app.ai.strategies.base import BaseStrategy, MarketContext, SignalResult
@@ -243,6 +242,10 @@ class MeanReversionStrategy(BaseStrategy):
         risk_reward = (reward / risk) if risk > 0 else 0
 
         confidence = self._calculate_confidence(check_result["factors"])
+
+        # Early exit at mid-BB if quick bounce
+        early_exit = bb_middle
+        check_result["factors"].append({"name": "Early Exit Target", "weight": 0.0, "score": 0.0, "label": "INFO", "early_exit_price": round(early_exit, 8)})
 
         return SignalResult(
             asset=asset,

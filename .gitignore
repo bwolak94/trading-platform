@@ -38,6 +38,9 @@ TestResults.xml
 *.h5
 models_cache/
 
+# Learning engine — mutable state file, stored in Redis in production
+backend/app/ai/agent/learning_memory.json
+
 # Node
 node_modules/
 frontend/dist/
@@ -56,6 +59,10 @@ logs/
 
 # Alembic
 alembic/versions/__pycache__/
+
+# Celery Beat state file — changes on every run, must not be committed
+celerybeat-schedule
+celerybeat.pid
 
 # HuggingFace cache
 .cache/

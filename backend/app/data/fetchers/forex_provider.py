@@ -11,7 +11,6 @@ Calculates Tick Delta as order flow proxy.
 
 import asyncio
 import logging
-import random
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta

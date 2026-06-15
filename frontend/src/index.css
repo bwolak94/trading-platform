@@ -2,8 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dark theme (default) */
+:root {
+  --color-background: #0d1117;
+  --color-surface: #161b22;
+  --color-border: #30363d;
+  --color-accent: #2563eb;
+  --color-bullish: #00d4aa;
+  --color-bearish: #ff4757;
+  --color-warning: #ffb347;
+  --color-foreground: #e6edf3;
+  --color-muted: #8b949e;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --color-background: #ffffff;
+  --color-surface: #f6f8fa;
+  --color-border: #d0d7de;
+  --color-accent: #2563eb;
+  --color-bullish: #00875a;
+  --color-bearish: #d32f2f;
+  --color-warning: #e67e22;
+  --color-foreground: #1f2328;
+  --color-muted: #656d76;
+}
+
+/* Terminal theme — green-on-black Matrix style */
+[data-theme="terminal"] {
+  --color-background: #080808;
+  --color-surface: #0f0f0f;
+  --color-border: #1a3d1a;
+  --color-accent: #00ff00;
+  --color-bullish: #00ff41;
+  --color-bearish: #ff4444;
+  --color-warning: #ffcc00;
+  --color-foreground: #00ff00;
+  --color-muted: #3d7a3d;
+}
+
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }

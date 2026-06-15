@@ -30,7 +30,7 @@ export interface Signal {
   entry_price: number;
   stop_loss: number;
   take_profit_1: number;
-  take_profit_2: number;
+  take_profit_2: number | null;
   risk_reward: number;
   position_size_pct: number | null;
   technical_score: number | null;
@@ -138,12 +138,10 @@ export interface RiskSummary {
   streak: { wins: number; losses: number };
 }
 
-export interface WSMessage {
-  type:
-    | "NEW_SIGNAL"
-    | "REGIME_CHANGE"
-    | "KILL_SWITCH_TRIGGERED"
-    | "SUBSCRIBED"
-    | "UNSUBSCRIBED";
-  payload: Record<string, unknown>;
-}
+/** Discriminated union of all WebSocket message types. */
+export type WSMessage =
+  | { type: "NEW_SIGNAL"; payload: Pick<Signal, "asset" | "direction" | "confidence" | "entry_price"> & { strategy: string } }
+  | { type: "REGIME_CHANGE"; payload: { asset: string; regime: MarketRegime; confidence: number } }
+  | { type: "KILL_SWITCH_TRIGGERED"; payload: { drawdown_pct: number; reason: string } }
+  | { type: "SUBSCRIBED"; payload: { channels: string[] } }
+  | { type: "UNSUBSCRIBED"; payload: { channels: string[] } };

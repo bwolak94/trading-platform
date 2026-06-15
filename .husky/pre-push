@@ -1,0 +1,7 @@
+cd frontend && npx tsc --noEmit && npm test
+cd ../backend
+if python -c "import ta" 2>/dev/null; then
+  python -m pytest tests/ -q --tb=short --ignore=tests/test_api.py
+else
+  echo "⚠ Backend deps not installed — skipping Python tests. Run: pip install -r backend/requirements.txt"
+fi

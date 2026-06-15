@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PriceChart } from "./PriceChart";
 import { fetchAgentSignals, fetchDayTradeSignals } from "../../api/client";
@@ -37,8 +37,25 @@ function getChartCount(mode: LayoutMode): number {
   }
 }
 
-export function MultiChart({ onAssetChange }: { onAssetChange?: (asset: string, tf: string) => void }) {
-  const [layout, setLayout] = useState<LayoutMode>("1");
+interface MultiChartProps {
+  onAssetChange?: (asset: string, tf: string) => void;
+  defaultAsset?: string;
+  defaultTimeframe?: string;
+}
+
+export function MultiChart({ onAssetChange, defaultAsset, defaultTimeframe }: MultiChartProps) {
+  const [layout, setLayoutState] = useState<LayoutMode>(() => {
+    const saved = localStorage.getItem("chart-layout");
+    return (saved as LayoutMode) || "1";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("chart-layout", layout);
+  }, [layout]);
+
+  const setLayout = (mode: LayoutMode) => {
+    setLayoutState(mode);
+  };
 
   // Fetch active agent signals
   const { data: swingSignals } = useQuery({
@@ -87,7 +104,7 @@ export function MultiChart({ onAssetChange }: { onAssetChange?: (asset: string, 
         <div className="flex items-center gap-1">
           <span className="text-xs text-gray-500 mr-2">Layout:</span>
           {LAYOUTS.map((l) => (
-            <button key={l.mode} type="button" onClick={() => setLayout(l.mode)}
+            <button key={l.mode} type="button" onClick={() => { setLayout(l.mode); }}
               className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
                 layout === l.mode ? "bg-accent text-white" : "bg-surface text-gray-400 hover:text-white border border-border"
               }`}
@@ -120,6 +137,8 @@ export function MultiChart({ onAssetChange }: { onAssetChange?: (asset: string, 
               onAssetChange={i === 0 ? onAssetChange : undefined}
               activePosition={allSignals}
               compact={chartCount > 1}
+              defaultAsset={i === 0 ? defaultAsset : undefined}
+              defaultTimeframe={i === 0 ? defaultTimeframe : undefined}
             />
           </div>
         ))}

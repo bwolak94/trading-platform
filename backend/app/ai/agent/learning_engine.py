@@ -6,11 +6,14 @@ Uses a simple online learning approach:
 3. Learns which strategies work in which regimes
 4. Penalizes strategies that lose in specific conditions
 5. Maintains a "memory" of market patterns that preceded wins/losses
+
+Persistence: learning state is stored in Redis (key ``learning:memory``) so it
+survives restarts without polluting git history with a mutable JSON file.
+Falls back to the legacy ``learning_memory.json`` file if Redis is unavailable.
 """
 
 import json
 import logging
-import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +21,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-MEMORY_FILE = Path(__file__).parent / "learning_memory.json"
+# Legacy file — used as fallback when Redis is unavailable
+_LEGACY_MEMORY_FILE = Path(__file__).parent / "learning_memory.json"
+_REDIS_KEY = "learning:memory"
 
 # Strategy + condition combos
 StrategyKey = str  # e.g. "trend_following:TREND_BULL"
@@ -232,25 +237,57 @@ class LearningEngine:
         }
 
     def _save_memory(self) -> None:
-        """Persist learning state to disk."""
+        """Persist learning state — Redis primary, legacy JSON file as fallback."""
+        data = {
+            "stats": {k: dict(v) for k, v in self._stats.items()},
+            "multipliers": self._confidence_multipliers,
+            "blocked": {k: v.isoformat() for k, v in self._blocked.items()},
+            "win_patterns": self._win_patterns[-50:],
+            "loss_patterns": self._loss_patterns[-50:],
+        }
+        payload = json.dumps(data)
+
+        # Try Redis first (30-day TTL — long enough to survive restarts)
         try:
-            data = {
-                "stats": {k: dict(v) for k, v in self._stats.items()},
-                "multipliers": self._confidence_multipliers,
-                "blocked": {k: v.isoformat() for k, v in self._blocked.items()},
-                "win_patterns": self._win_patterns[-50:],
-                "loss_patterns": self._loss_patterns[-50:],
-            }
-            MEMORY_FILE.write_text(json.dumps(data, indent=2))
+            import redis as _redis
+            from app.core.config import settings
+            r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+            r.set(_REDIS_KEY, payload, ex=60 * 60 * 24 * 30)
+            return
+        except Exception as exc:
+            logger.debug("Redis save failed, falling back to JSON file: %s", exc)
+
+        # Fallback: write to local file
+        try:
+            _LEGACY_MEMORY_FILE.write_text(payload)
         except Exception as exc:
             logger.debug("Failed to save learning memory: %s", exc)
 
     def _load_memory(self) -> None:
-        """Load learning state from disk."""
-        if not MEMORY_FILE.exists():
-            return
+        """Load learning state — Redis primary, legacy JSON file as fallback."""
+        payload: str | None = None
+
+        # Try Redis first
         try:
-            data = json.loads(MEMORY_FILE.read_text())
+            import redis as _redis
+            from app.core.config import settings
+            r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+            payload = r.get(_REDIS_KEY)
+        except Exception as exc:
+            logger.debug("Redis load failed, trying JSON file: %s", exc)
+
+        # Fallback: read from legacy file
+        if payload is None and _LEGACY_MEMORY_FILE.exists():
+            try:
+                payload = _LEGACY_MEMORY_FILE.read_text()
+            except Exception as exc:
+                logger.debug("Failed to read legacy memory file: %s", exc)
+
+        if payload is None:
+            return
+
+        try:
+            data = json.loads(payload)
             for k, v in data.get("stats", {}).items():
                 self._stats[k] = v
             self._confidence_multipliers.update(data.get("multipliers", {}))
@@ -260,7 +297,7 @@ class LearningEngine:
             self._loss_patterns = data.get("loss_patterns", [])
             logger.info("Loaded learning memory: %d strategy combos", len(self._stats))
         except Exception as exc:
-            logger.debug("Failed to load learning memory: %s", exc)
+            logger.debug("Failed to parse learning memory: %s", exc)
 
 
 def _slim_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:

@@ -3,7 +3,6 @@ import {
   type ISeriesApi,
   type CandlestickData,
   type HistogramData,
-  type LineData,
   type Time,
   type MouseEventParams,
   type SeriesMarker,
@@ -13,16 +12,18 @@ import {
   LineStyle,
   PriceScaleMode,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AssetSearchSelect } from "../ui/AssetSearchSelect";
 import {
   fetchKlines,
   fetchIndicators,
   fetchLiquidationHeatmap,
-  type KlineData,
+  fetchNews,
+  fetchSignalMarkersForSymbol,
   type LiquidationHeatmapData,
   type IndicatorData,
-  type OrderBlockData,
-  type FVGData,
+  type NewsItemData,
+  type SignalMarker,
 } from "../../api/client";
 
 const CRYPTO_ASSETS = [
@@ -47,17 +48,10 @@ const CRYPTO_ASSETS = [
   { label: "SUI/USDT", value: "SUIUSDT" },
   { label: "PEPE/USDT", value: "PEPEUSDT" },
 ] as const;
-const FOREX_ASSETS = [
-  { label: "EUR/USD", value: "EURUSD" },
-  { label: "GBP/USD", value: "GBPUSD" },
-  { label: "XAU/USD (Gold)", value: "XAUUSD" },
-  { label: "GBP/JPY", value: "GBPJPY" },
-] as const;
-const ALL_ASSETS = [...CRYPTO_ASSETS, ...FOREX_ASSETS];
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
 const CANDLE_COUNTS = [100, 200, 300, 500, 1000] as const;
 
-type Asset = (typeof ALL_ASSETS)[number]["value"];
+type Asset = string;
 type Timeframe = (typeof TIMEFRAMES)[number];
 type CandleCountOption = (typeof CANDLE_COUNTS)[number];
 
@@ -79,9 +73,29 @@ const INDICATOR_GROUPS = [
     ],
   },
   {
+    label: "Heatmap",
+    items: [
+      { id: "vol_heatmap", label: "Volume Heatmap", color: "#ff6b00" },
+    ],
+  },
+  {
+    label: "Ichimoku",
+    items: [
+      { id: "ichimoku", label: "Ichimoku Cloud", color: "#f97316" },
+    ],
+  },
+  {
     label: "Volatility",
     items: [
       { id: "bb", label: "Bollinger Bands", color: "#8b5cf6" },
+      { id: "vwap", label: "VWAP", color: "#a78bfa" },
+    ],
+  },
+  {
+    label: "Fibonacci / S&R",
+    items: [
+      { id: "fibonacci", label: "Fibonacci Levels", color: "#eab308" },
+      { id: "support_resistance", label: "Auto S/R", color: "#06b6d4" },
     ],
   },
   {
@@ -92,15 +106,34 @@ const INDICATOR_GROUPS = [
     ],
   },
   {
+    label: "Flow",
+    items: [
+      { id: "money_flow", label: "$ Money Flow", color: "#22c55e" },
+      { id: "rsi_scalp", label: "RSI Scalp Signals", color: "#22d3ee" },
+    ],
+  },
+  {
     label: "Levels",
     items: [
       { id: "liquidations", label: "Liquidation Levels", color: "#ec4899" },
       { id: "liq_heatmap", label: "Liquidation Heatmap", color: "#facc15" },
     ],
   },
-] as const;
+  {
+    label: "Sessions",
+    items: [
+      { id: "sessions", label: "Trading Sessions", color: "#60a5fa" },
+    ],
+  },
+  {
+    label: "News",
+    items: [
+      { id: "news", label: "News Impact", color: "#a78bfa" },
+    ],
+  },
+] as { label: string; items: { id: IndicatorId; label: string; color: string }[] }[];
 
-type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap";
+type IndicatorId = "ema_20" | "ema_50" | "ema_200" | "bb" | "vwap" | "order_blocks" | "fvg" | "liquidations" | "liq_heatmap" | "rsi_scalp" | "ichimoku" | "fibonacci" | "support_resistance" | "money_flow" | "vol_heatmap" | "sessions" | "news";
 
 function fmt(p: number): string {
   if (p >= 1000) return p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -117,17 +150,32 @@ interface PriceChartProps {
   onAssetChange?: (asset: string, timeframe: string) => void;
   activePosition?: Record<string, { type: string; entry: number; sl: number; tps: number[]; action: string; strategy: string; confidence: number }>;
   compact?: boolean;
+  defaultAsset?: string;
+  defaultTimeframe?: string;
+  /** When true, renders the Volume Profile / Visible Range overlay on the right side of the chart */
+  showVPVR?: boolean;
+  /** When provided, overlays signal markers on the candlestick series */
+  signals?: SignalMarker[];
 }
 
-export function PriceChart({ onAssetChange, activePosition, compact }: PriceChartProps = {}) {
-  const [asset, setAsset] = useState<Asset>("BTCUSDT");
-  const [tf, setTf] = useState<Timeframe>("1h");
+export function PriceChart({ onAssetChange, activePosition, compact, defaultAsset, defaultTimeframe, showVPVR: showVPVRProp = false, signals: signalsProp }: PriceChartProps = {}) {
+  const [asset, setAsset] = useState<Asset>(() => defaultAsset ?? "BTCUSDT");
+  const [tf, setTf] = useState<Timeframe>(() => {
+    if (defaultTimeframe && TIMEFRAMES.includes(defaultTimeframe as Timeframe)) return defaultTimeframe as Timeframe;
+    return "1h";
+  });
   const [count, setCount] = useState<CandleCountOption>(300);
   const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorId>>(new Set(["ema_20", "ema_50"]));
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false);
+  const [heikinAshi, setHeikinAshi] = useState(false);
+  const [showVPVR, setShowVPVR] = useState(showVPVRProp);
+  const [showSignals, setShowSignals] = useState(false);
+  const [signalMarkers, setSignalMarkers] = useState<SignalMarker[]>(signalsProp ?? []);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  const isCrypto = CRYPTO_SET.has(asset);
-  const label = ALL_ASSETS.find((a) => a.value === asset)?.label ?? asset;
+  // Any USDT pair (including dynamic futures symbols) is treated as crypto
+  const isCrypto = asset.endsWith("USDT") || CRYPTO_SET.has(asset);
 
   const toggleIndicator = (id: IndicatorId) => {
     setActiveIndicators((prev) => {
@@ -137,48 +185,126 @@ export function PriceChart({ onAssetChange, activePosition, compact }: PriceChar
     });
   };
 
+  // Fetch signal markers when showSignals is toggled on
+  useEffect(() => {
+    if (!showSignals) { setSignalMarkers([]); return; }
+    void fetchSignalMarkersForSymbol(asset, 50)
+      .then((res) => { setSignalMarkers(res.signals); })
+      .catch(() => { setSignalMarkers([]); });
+  }, [showSignals, asset]);
+
+  // Sync external signalsProp when provided
+  useEffect(() => {
+    if (signalsProp) setSignalMarkers(signalsProp);
+  }, [signalsProp]);
+
+  // Fullscreen toggle — uses the Fullscreen API on the chart wrapper div
+  const handleFullscreen = useCallback(() => {
+    const el = chartContainerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      void el.requestFullscreen().catch(() => {});
+    } else {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // Track fullscreen state changes (ESC key, etc.)
+  useEffect(() => {
+    function onFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => { document.removeEventListener("fullscreenchange", onFullscreenChange); };
+  }, []);
+
   // Serialize active indicators to string for key
   const indicatorKey = Array.from(activeIndicators).sort().join(",");
 
   return (
-    <div className="rounded-lg border border-border bg-surface">
+    <div ref={chartContainerRef} id="price-chart-container" className={`rounded-lg border border-border bg-surface ${isFullscreen ? "h-screen overflow-hidden" : ""}`}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <div className="flex items-center gap-2">
-          <select value={asset} onChange={(e) => { const v = e.target.value as Asset; setAsset(v); onAssetChange?.(v, tf); }}
-            className="rounded border border-border bg-background px-3 py-1.5 text-sm font-semibold text-white focus:outline-none"
-            aria-label="Select pair">
-            {ALL_ASSETS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </select>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-2 py-2 sm:px-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <AssetSearchSelect
+            value={asset}
+            onChange={(v) => { setAsset(v); onAssetChange?.(v, tf); }}
+            aria-label="Select pair"
+          />
 
-          <div className="flex gap-0.5">
+          <div className="flex flex-wrap gap-0.5">
             {TIMEFRAMES.map((t) => (
               <button key={t} type="button" onClick={() => { setTf(t); onAssetChange?.(asset, t); }}
-                className={`rounded px-2.5 py-1 text-xs font-medium ${tf === t ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
+                className={`min-h-[44px] min-w-[44px] rounded px-2.5 py-1 text-xs font-medium ${tf === t ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
                 aria-label={`${t} timeframe`}>{t.toUpperCase()}</button>
             ))}
           </div>
 
-          <span className="text-gray-600">|</span>
+          <span className="hidden text-gray-600 sm:inline">|</span>
 
-          <div className="flex gap-0.5">
+          <div className="flex flex-wrap gap-0.5">
             {CANDLE_COUNTS.map((c) => (
-              <button key={c} type="button" onClick={() => setCount(c)}
-                className={`rounded px-2 py-1 text-xs ${count === c ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
+              <button key={c} type="button" onClick={() => { setCount(c); }}
+                className={`min-h-[44px] min-w-[44px] rounded px-2 py-1 text-xs ${count === c ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
                 aria-label={`${c} candles`}>{c}</button>
             ))}
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Heikin-Ashi toggle */}
+          <button type="button" onClick={() => { setHeikinAshi((prev) => !prev); }}
+            className={`min-h-[44px] min-w-[44px] rounded px-2.5 py-1.5 text-xs font-bold transition-colors ${heikinAshi ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
+            aria-label={heikinAshi ? "Disable Heikin-Ashi candles" : "Enable Heikin-Ashi candles"}
+            aria-pressed={heikinAshi}
+            title="Heikin-Ashi">
+            HA
+          </button>
+
+          {/* Volume Profile toggle */}
+          <button type="button" onClick={() => { setShowVPVR((prev) => !prev); }}
+            className={`min-h-[44px] flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${showVPVR ? "bg-orange-500/20 border border-orange-500/50 text-orange-400" : "bg-background text-gray-400 hover:text-white"}`}
+            aria-label={showVPVR ? "Hide Volume Profile" : "Show Volume Profile"}
+            aria-pressed={showVPVR}
+            title="Volume Profile (VPVR)">
+            VP
+          </button>
+
+          {/* Show Signals toggle */}
+          <button type="button" onClick={() => { setShowSignals((prev) => !prev); }}
+            className={`min-h-[44px] flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${showSignals ? "bg-accent/20 border border-accent/50 text-accent" : "bg-background text-gray-400 hover:text-white"}`}
+            aria-label={showSignals ? "Hide signal overlay" : "Show signal overlay"}
+            aria-pressed={showSignals}
+            title="Signal Overlay">
+            Signals
+          </button>
+
         {/* Indicators toggle button */}
-        <button type="button" onClick={() => setShowIndicatorPanel(!showIndicatorPanel)}
-          className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium ${showIndicatorPanel ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
+        <button type="button" onClick={() => { setShowIndicatorPanel(!showIndicatorPanel); }}
+          className={`min-h-[44px] flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium ${showIndicatorPanel ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
           aria-label="Toggle indicators panel">
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           Indicators ({activeIndicators.size})
         </button>
+
+        {/* Fullscreen toggle */}
+        <button type="button" onClick={handleFullscreen}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded bg-background px-2.5 py-1.5 text-xs text-gray-400 transition-colors hover:text-white"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          title={isFullscreen ? "Exit fullscreen (ESC)" : "Fullscreen"}>
+          {isFullscreen ? (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L4 4m0 0v4m0-4h4M15 9l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0h4m-4 0v-4M15 15l5 5m0 0h-4m4 0v-4" />
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+            </svg>
+          )}
+        </button>
+        </div>
       </div>
 
       {/* Indicator panel */}
@@ -189,11 +315,11 @@ export function PriceChart({ onAssetChange, activePosition, compact }: PriceChar
               <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">{group.label}</span>
               <div className="flex flex-wrap gap-1.5">
                 {group.items.map((ind) => {
-                  const active = activeIndicators.has(ind.id as IndicatorId);
+                  const active = activeIndicators.has(ind.id);
                   return (
                     <button key={ind.id} type="button"
-                      onClick={() => toggleIndicator(ind.id as IndicatorId)}
-                      className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition-colors ${
+                      onClick={() => { toggleIndicator(ind.id); }}
+                      className={`min-h-[44px] flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition-colors ${
                         active ? "border-transparent text-white" : "border-border text-gray-500 hover:text-gray-300"
                       }`}
                       style={active ? { backgroundColor: ind.color + "25", borderColor: ind.color + "60" } : {}}
@@ -210,9 +336,10 @@ export function PriceChart({ onAssetChange, activePosition, compact }: PriceChar
       )}
 
       {/* Chart — all pairs now supported */}
-      <ChartCanvas key={`${asset}-${tf}-${count}-${indicatorKey}`}
+      <ChartCanvas key={`${asset}-${tf}-${count}-${indicatorKey}-${heikinAshi}`}
         asset={asset} timeframe={tf} candleLimit={count}
-        activeIndicators={activeIndicators} activePosition={activePosition} compact={compact} />
+        activeIndicators={activeIndicators} activePosition={activePosition} compact={compact} heikinAshi={heikinAshi}
+        showVPVR={showVPVR} signals={signalMarkers} isFullscreen={isFullscreen} />
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-border px-4 py-1.5 text-xs text-gray-500">
@@ -237,15 +364,38 @@ export function PriceChart({ onAssetChange, activePosition, compact }: PriceChar
 /*  Chart canvas — remounts via key on param change                   */
 /* ------------------------------------------------------------------ */
 
-function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePosition, compact }: {
+/** Transform OHLCV data to Heikin-Ashi candles */
+function toHeikinAshi(klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[]): { time: number; open: number; high: number; low: number; close: number; volume: number }[] {
+  if (klines.length === 0) return [];
+  const result: { time: number; open: number; high: number; low: number; close: number; volume: number }[] = [];
+  for (let i = 0; i < klines.length; i++) {
+    const k = klines[i]!;
+    const haClose = (k.open + k.high + k.low + k.close) / 4;
+    const haOpen = i === 0
+      ? (k.open + k.close) / 2
+      : (result[i - 1]!.open + result[i - 1]!.close) / 2;
+    const haHigh = Math.max(k.high, haOpen, haClose);
+    const haLow = Math.min(k.low, haOpen, haClose);
+    result.push({ time: k.time, open: haOpen, high: haHigh, low: haLow, close: haClose, volume: k.volume });
+  }
+  return result;
+}
+
+function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePosition, compact, heikinAshi, showVPVR, signals, isFullscreen }: {
   asset: string; timeframe: string; candleLimit: number; activeIndicators: Set<IndicatorId>;
   activePosition?: Record<string, { type: string; entry: number; sl: number; tps: number[]; action: string; strategy: string; confidence: number }>;
   compact?: boolean;
+  heikinAshi?: boolean;
+  showVPVR?: boolean;
+  signals?: SignalMarker[];
+  isFullscreen?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState<OHLCVInfo | null>(null);
   const [hover, setHover] = useState<OHLCVInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [vpvrData, setVpvrData] = useState<VPVRBin[] | null>(null);
+  const [chartDimensions, setChartDimensions] = useState<{ height: number; currentPrice: number; priceMin: number; priceMax: number } | null>(null);
 
   const display = hover ?? bar;
 
@@ -254,8 +404,17 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
     if (!el) return;
     let cancelled = false;
 
+    const hasVolHeatmap = activeIndicators.has("vol_heatmap");
+    const hasSessions = activeIndicators.has("sessions");
+
+    // Responsive chart height: use smaller height on mobile, full viewport height in fullscreen
+    const isMobile = el.clientWidth < 768;
+    const chartHeight = isFullscreen
+      ? (window.innerHeight - 60)
+      : compact ? (isMobile ? 250 : 350) : (isMobile ? 300 : 500);
+
     const chart = createChart(el, {
-      width: el.clientWidth, height: compact ? 350 : 550,
+      width: el.clientWidth, height: chartHeight,
       layout: { background: { type: ColorType.Solid, color: "#0d1117" }, textColor: "#8b949e", fontFamily: "'Inter', sans-serif" },
       grid: { vertLines: { color: "#1c2128", style: LineStyle.Dotted }, horzLines: { color: "#1c2128", style: LineStyle.Dotted } },
       crosshair: { mode: CrosshairMode.Normal,
@@ -279,22 +438,31 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
 
     chart.subscribeCrosshairMove((p: MouseEventParams) => {
       if (!p.time || !p.seriesData) { setHover(null); return; }
-      const c = p.seriesData.get(cs) as CandlestickData<Time> | undefined;
-      const v = p.seriesData.get(vs) as HistogramData<Time> | undefined;
+      const c = p.seriesData.get(cs) as CandlestickData | undefined;
+      const v = p.seriesData.get(vs) as HistogramData | undefined;
       if (c) {
         const ch = c.close - c.open;
         setHover({ open: c.open, high: c.high, low: c.low, close: c.close, volume: v?.value ?? 0, change: ch, changePct: c.open ? (ch / c.open) * 100 : 0 });
       }
     });
 
-    const onResize = () => chart.applyOptions({ width: el.clientWidth });
+    const onResize = () => {
+      const mobile = el.clientWidth < 768;
+      const h = isFullscreen
+        ? (window.innerHeight - 60)
+        : compact ? (mobile ? 250 : 350) : (mobile ? 300 : 500);
+      chart.applyOptions({ width: el.clientWidth, height: h });
+    };
     window.addEventListener("resize", onResize);
 
     let prevClose = 0;
+    let heatmapCleanupRef: (() => void) | null = null;
+    let sessionsCleanupRef: (() => void) | null = null;
 
     // Load candle data
-    fetchKlines(asset, timeframe, candleLimit).then((klines) => {
+    fetchKlines(asset, timeframe, candleLimit).then((rawKlines) => {
       if (cancelled) return;
+      const klines = heikinAshi ? toHeikinAshi(rawKlines) : rawKlines;
       cs.setData(klines.map((k) => ({ time: k.time as Time, open: k.open, high: k.high, low: k.low, close: k.close })));
       vs.setData(klines.map((k) => ({ time: k.time as Time, value: k.volume, color: k.close >= k.open ? "rgba(0,212,170,0.3)" : "rgba(255,71,87,0.3)" })));
 
@@ -303,6 +471,27 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
         prevClose = klines.length > 1 ? klines[klines.length - 2]!.close : last.open;
         const ch = last.close - prevClose;
         setBar({ open: last.open, high: last.high, low: last.low, close: last.close, volume: last.volume, change: ch, changePct: prevClose ? (ch / prevClose) * 100 : 0 });
+
+        // Compute VPVR bins from loaded candle data
+        if (showVPVR) {
+          const bins = computeVPVRBins(klines, 50);
+          const priceMin = Math.min(...klines.map((k) => k.low));
+          const priceMax = Math.max(...klines.map((k) => k.high));
+          setVpvrData(bins);
+          setChartDimensions({ height: chartHeight, currentPrice: last.close, priceMin, priceMax });
+        }
+      }
+
+      // Apply signal markers on the candlestick series
+      if (signals && signals.length > 0) {
+        const signalMarkersForSeries: SeriesMarker<Time>[] = signals.map((sig) => ({
+          time: sig.time as Time,
+          position: sig.direction === "LONG" ? "belowBar" as const : "aboveBar" as const,
+          color: sig.direction === "LONG" ? "#4ade80" : "#f87171",
+          shape: sig.direction === "LONG" ? "arrowUp" as const : "arrowDown" as const,
+          text: `${sig.strategy} ${Math.round(sig.confidence * 100)}%`,
+        }));
+        cs.setMarkers(signalMarkersForSeries);
       }
 
       // Draw active agent position on chart
@@ -329,11 +518,21 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
         }
       }
 
+      // Volume Heatmap — thermal overlay on chart
+      if (hasVolHeatmap && klines.length > 0) {
+        heatmapCleanupRef = setupVolumeHeatmap(chart, cs, klines, el, chartHeight);
+      }
+
+      // Trading Sessions — colored background overlay
+      if (hasSessions && klines.length > 0) {
+        sessionsCleanupRef = setupSessionsOverlay(chart, klines, el, chartHeight);
+      }
+
       // Load indicators + liquidation heatmap
       const promises: Promise<void>[] = [];
 
       if (activeIndicators.size > 0) {
-        const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap");
+        const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap" && id !== "vol_heatmap" && id !== "sessions" && id !== "news");
         if (hasNonLiqHeatmap) {
           promises.push(
             fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
@@ -350,21 +549,29 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
             }).catch(() => {})
           );
         }
+        if (activeIndicators.has("news")) {
+          promises.push(
+            fetchNews(100).then(({ news }) => {
+              if (cancelled || news.length === 0) return;
+              drawNewsMarkers(cs, news, klines);
+            }).catch(() => {})
+          );
+        }
       }
 
       if (promises.length > 0) {
         Promise.all(promises).then(() => {
           chart.timeScale().fitContent();
           setLoading(false);
-        }).catch(() => setLoading(false));
+        }).catch(() => { setLoading(false); });
       } else {
         chart.timeScale().fitContent();
         setLoading(false);
       }
-    }).catch(() => setLoading(false));
+    }).catch(() => { setLoading(false); });
 
     // Live updates — WebSocket for crypto, polling for forex
-    const isCryptoPair = CRYPTO_SET.has(asset.toUpperCase());
+    const isCryptoPair = asset.toUpperCase().endsWith("USDT") || CRYPTO_SET.has(asset.toUpperCase());
     let ws: WebSocket | null = null;
     let reconTimer: ReturnType<typeof setTimeout> | null = null;
     let forexPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -422,7 +629,7 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
       indicatorSeries.forEach((s) => { try { chart.removeSeries(s); } catch { /* */ } });
       indicatorSeries.length = 0;
 
-      const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap");
+      const hasNonLiqHeatmap = Array.from(activeIndicators).some((id) => id !== "liq_heatmap" && id !== "vol_heatmap" && id !== "sessions" && id !== "news");
       if (hasNonLiqHeatmap) {
         fetchIndicators(asset, timeframe, candleLimit).then((ind) => {
           if (cancelled) return;
@@ -435,6 +642,15 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
           drawLiquidationHeatmap(cs, liqData, priceLines);
         }).catch(() => {});
       }
+      if (activeIndicators.has("news")) {
+        fetchKlines(asset, timeframe, candleLimit).then((refreshedKlines) => {
+          if (cancelled) return;
+          fetchNews(100).then(({ news }) => {
+            if (cancelled || news.length === 0) return;
+            drawNewsMarkers(cs, news, refreshedKlines);
+          }).catch(() => {});
+        }).catch(() => {});
+      }
     }, 30_000);
 
     return () => {
@@ -444,6 +660,8 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
       window.removeEventListener("resize", onResize);
       if (reconTimer) clearTimeout(reconTimer);
       ws?.close();
+      heatmapCleanupRef?.();
+      sessionsCleanupRef?.();
       chart.remove();
     };
   }, []);
@@ -451,17 +669,17 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
   return (
     <div className="relative">
       {display && (
-        <div className="absolute left-4 top-2 z-20 flex items-center gap-3 text-xs">
-          <span className={`text-lg font-mono font-bold ${display.change >= 0 ? "text-bullish" : "text-bearish"}`}>{fmt(display.close)}</span>
+        <div className="absolute left-2 top-2 z-20 flex flex-wrap items-center gap-1.5 text-xs sm:left-4 sm:gap-3">
+          <span className={`text-sm font-mono font-bold sm:text-lg ${display.change >= 0 ? "text-bullish" : "text-bearish"}`}>{fmt(display.close)}</span>
           <span className={`font-mono ${display.change >= 0 ? "text-bullish" : "text-bearish"}`}>
             {display.change >= 0 ? "+" : ""}{fmt(display.change)} ({display.changePct >= 0 ? "+" : ""}{display.changePct.toFixed(2)}%)
           </span>
-          <span className="text-gray-500">|</span>
-          <span className="text-gray-400">O <span className="font-mono text-white">{fmt(display.open)}</span></span>
-          <span className="text-gray-400">H <span className="font-mono text-white">{fmt(display.high)}</span></span>
-          <span className="text-gray-400">L <span className="font-mono text-white">{fmt(display.low)}</span></span>
-          <span className="text-gray-400">C <span className="font-mono text-white">{fmt(display.close)}</span></span>
-          <span className="text-gray-400">Vol <span className="font-mono text-white">{fmtVol(display.volume)}</span></span>
+          <span className="hidden text-gray-500 sm:inline">|</span>
+          <span className="hidden text-gray-400 sm:inline">O <span className="font-mono text-white">{fmt(display.open)}</span></span>
+          <span className="hidden text-gray-400 sm:inline">H <span className="font-mono text-white">{fmt(display.high)}</span></span>
+          <span className="hidden text-gray-400 sm:inline">L <span className="font-mono text-white">{fmt(display.low)}</span></span>
+          <span className="hidden text-gray-400 sm:inline">C <span className="font-mono text-white">{fmt(display.close)}</span></span>
+          <span className="hidden text-gray-400 sm:inline">Vol <span className="font-mono text-white">{fmtVol(display.volume)}</span></span>
         </div>
       )}
       {loading && (
@@ -474,8 +692,169 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
           </div>
         </div>
       )}
+      {/* VPVR SVG overlay — rendered on right side of chart */}
+      {showVPVR && vpvrData && chartDimensions && (
+        <VolumeProfileOverlay
+          bins={vpvrData}
+          chartHeight={chartDimensions.height}
+          currentPrice={chartDimensions.currentPrice}
+          priceMin={chartDimensions.priceMin}
+          priceMax={chartDimensions.priceMax}
+        />
+      )}
       <div ref={containerRef} style={{ width: "100%" }} />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Volume Profile (VPVR)                                             */
+/* ------------------------------------------------------------------ */
+
+interface VPVRBin {
+  priceMin: number;
+  priceMax: number;
+  priceMid: number;
+  volume: number;
+  isPoC: boolean;
+}
+
+/**
+ * Calculates Volume Profile bins from OHLCV candle data.
+ * Each candle's volume is assigned to a price bin based on its typical price (high+low+close)/3.
+ * Returns bins sorted by price ascending, with the Point of Control (PoC) flagged.
+ */
+function computeVPVRBins(
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  numBins = 50,
+): VPVRBin[] {
+  if (klines.length < 2) return [];
+
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const k of klines) {
+    if (k.low < priceMin) priceMin = k.low;
+    if (k.high > priceMax) priceMax = k.high;
+  }
+  const range = priceMax - priceMin;
+  if (range <= 0) return [];
+
+  const binSize = range / numBins;
+  const volumes = new Float64Array(numBins);
+
+  for (const k of klines) {
+    // Typical price as the distribution center for this candle's volume
+    const typicalPrice = (k.high + k.low + k.close) / 3;
+    const binIndex = Math.min(numBins - 1, Math.max(0, Math.floor((typicalPrice - priceMin) / binSize)));
+    volumes[binIndex]! += k.volume;
+  }
+
+  let maxVolume = 0;
+  for (let i = 0; i < numBins; i++) {
+    if (volumes[i]! > maxVolume) maxVolume = volumes[i]!;
+  }
+
+  let pocIndex = 0;
+  for (let i = 0; i < numBins; i++) {
+    if (volumes[i]! > volumes[pocIndex]!) pocIndex = i;
+  }
+
+  return Array.from({ length: numBins }, (_, i) => ({
+    priceMin: priceMin + i * binSize,
+    priceMax: priceMin + (i + 1) * binSize,
+    priceMid: priceMin + (i + 0.5) * binSize,
+    volume: volumes[i]!,
+    isPoC: i === pocIndex,
+  })).filter((b) => b.volume > 0);
+}
+
+interface VolumeProfileOverlayProps {
+  bins: VPVRBin[];
+  chartHeight: number;
+  currentPrice: number;
+  priceMin: number;
+  priceMax: number;
+}
+
+/**
+ * Renders the Volume Profile as an SVG overlay on the right side of the chart.
+ * Bars are colored green (above current price), red (below), with PoC in yellow/orange.
+ * Width is 15% of the chart container; opacity 0.7.
+ */
+function VolumeProfileOverlay({ bins, chartHeight, currentPrice, priceMin, priceMax }: VolumeProfileOverlayProps) {
+  if (bins.length === 0 || priceMax <= priceMin) return null;
+
+  const priceRange = priceMax - priceMin;
+  const maxVolume = Math.max(...bins.map((b) => b.volume));
+
+  return (
+    <svg
+      style={{ position: "absolute", right: 0, top: 0, width: "15%", height: chartHeight }}
+      className="pointer-events-none opacity-70"
+      aria-hidden="true"
+      role="img"
+      aria-label="Volume Profile overlay"
+    >
+      {bins.map((bin, i) => {
+        // Map price to Y coordinate (price increases upward, SVG Y increases downward)
+        const yTop = chartHeight * (1 - (bin.priceMax - priceMin) / priceRange);
+        const yBottom = chartHeight * (1 - (bin.priceMin - priceMin) / priceRange);
+        const barHeight = Math.max(1, yBottom - yTop);
+
+        // Width proportional to volume vs max, capped at 95% of the overlay width
+        const barWidthPct = (bin.volume / maxVolume) * 95;
+
+        const isAboveCurrentPrice = bin.priceMid > currentPrice;
+        let fillColor: string;
+        if (bin.isPoC) {
+          fillColor = "#f97316"; // orange for Point of Control
+        } else if (isAboveCurrentPrice) {
+          fillColor = "rgba(74,222,128,0.6)"; // green
+        } else {
+          fillColor = "rgba(248,113,113,0.6)"; // red
+        }
+
+        return (
+          <g key={i}>
+            <rect
+              x={`${100 - barWidthPct}%`}
+              y={yTop}
+              width={`${barWidthPct}%`}
+              height={barHeight}
+              fill={fillColor}
+            />
+            {bin.isPoC && (
+              <line
+                x1="0%"
+                x2="100%"
+                y1={yTop + barHeight / 2}
+                y2={yTop + barHeight / 2}
+                stroke="#facc15"
+                strokeWidth={1}
+                strokeDasharray="3,2"
+              />
+            )}
+          </g>
+        );
+      })}
+      {/* PoC label */}
+      {bins.find((b) => b.isPoC) && (() => {
+        const poc = bins.find((b) => b.isPoC)!;
+        const yMid = chartHeight * (1 - (poc.priceMid - priceMin) / priceRange);
+        return (
+          <text
+            x="2"
+            y={Math.max(10, Math.min(chartHeight - 4, yMid - 3))}
+            fill="#facc15"
+            fontSize="9"
+            fontFamily="Inter, sans-serif"
+            fontWeight="bold"
+          >
+            PoC
+          </text>
+        );
+      })()}
+    </svg>
   );
 }
 
@@ -525,6 +904,24 @@ function drawIndicators(
       const sl = chart.addLineSeries({ color: "#8b5cf680", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
       sl.setData(data.bb_lower.map((p) => ({ time: p.time as Time, value: p.value })));
       seriesRefs.push(sl);
+    }
+  }
+  // VWAP with upper/lower bands
+  if (active.has("vwap")) {
+    if (data.vwap?.length) {
+      const sv = chart.addLineSeries({ color: "#a78bfa", lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+      sv.setData(data.vwap.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(sv);
+    }
+    if (data.vwap_upper_1?.length) {
+      const su = chart.addLineSeries({ color: "#a78bfa60", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      su.setData(data.vwap_upper_1.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(su);
+    }
+    if (data.vwap_lower_1?.length) {
+      const slv = chart.addLineSeries({ color: "#a78bfa60", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      slv.setData(data.vwap_lower_1.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(slv);
     }
   }
   // Order Blocks — LONG/SHORT zones with clear labels
@@ -580,6 +977,108 @@ function drawIndicators(
         axisLabelVisible: liq.leverage <= 25,
         title: `${liq.leverage}x ${liq.side.toUpperCase()} LIQ`,
       }));
+    }
+  }
+  // RSI Scalping BUY/SELL signals — only last 3 clean signals
+  if (active.has("rsi_scalp") && data.scalp_signals?.length) {
+    for (const sig of data.scalp_signals.slice(-3)) {
+      const isBuy = sig.type === "BUY";
+      plRefs.push(candleSeries.createPriceLine({
+        price: sig.price,
+        color: isBuy ? "#22d3ee" : "#f43f5e",
+        lineWidth: 2,
+        lineStyle: isBuy ? LineStyle.Dashed : LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `${sig.type} (RSI Scalp)`,
+      }));
+    }
+  }
+
+  // Ichimoku Cloud
+  if (active.has("ichimoku")) {
+    // Tenkan-sen (orange)
+    if (data.ichimoku_tenkan?.length) {
+      const s = chart.addLineSeries({ color: "#f97316", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_tenkan.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Kijun-sen (blue)
+    if (data.ichimoku_kijun?.length) {
+      const s = chart.addLineSeries({ color: "#3b82f6", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_kijun.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Senkou Span A (green dashed)
+    if (data.ichimoku_senkou_a?.length) {
+      const s = chart.addLineSeries({ color: "#22c55e80", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_senkou_a.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Senkou Span B (red dashed)
+    if (data.ichimoku_senkou_b?.length) {
+      const s = chart.addLineSeries({ color: "#ef444480", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_senkou_b.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+    // Chikou Span (purple dotted)
+    if (data.ichimoku_chikou?.length) {
+      const s = chart.addLineSeries({ color: "#a855f780", lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false });
+      s.setData(data.ichimoku_chikou.map((p) => ({ time: p.time as Time, value: p.value })));
+      seriesRefs.push(s);
+    }
+  }
+
+  // Fibonacci Levels — horizontal lines with color gradient (gold to red)
+  if (active.has("fibonacci") && data.fibonacci?.levels?.length) {
+    const fibColors: Record<string, string> = {
+      "0.0%": "#6b7280", "23.6%": "#eab308", "38.2%": "#f59e0b",
+      "50.0%": "#f97316", "61.8%": "#ef4444", "78.6%": "#dc2626",
+      "88.6%": "#b91c1c", "100.0%": "#6b7280",
+    };
+    for (const level of data.fibonacci.levels) {
+      const color = fibColors[level.label] ?? "#eab308";
+      plRefs.push(candleSeries.createPriceLine({
+        price: level.price,
+        color: color + "90",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `Fib ${level.label}`,
+      }));
+    }
+  }
+
+  // Auto Support / Resistance — colored by role, style by strength
+  if (active.has("support_resistance") && data.support_resistance?.length) {
+    const srLevels = data.support_resistance.slice(-12);
+    for (const sr of srLevels) {
+      const isResistance = sr.role === "resistance";
+      const color = isResistance ? "#ef4444" : "#3b82f6";
+      const lineWidth = sr.strength > 0.6 ? 2 : 1;
+      plRefs.push(candleSeries.createPriceLine({
+        price: sr.price,
+        color: color + (sr.strength > 0.6 ? "cc" : "80"),
+        lineWidth,
+        lineStyle: sr.strength > 0.4 ? LineStyle.Solid : LineStyle.Dashed,
+        axisLabelVisible: sr.strength > 0.3,
+        title: `${isResistance ? "R" : "S"} (${sr.touches}x)`,
+      }));
+    }
+  }
+
+  // $ Money Flow Markers — series markers on candles
+  if (active.has("money_flow") && data.money_flow_markers?.length) {
+    const markers: SeriesMarker<Time>[] = data.money_flow_markers
+      .filter((m) => m.time != null)
+      .map((m) => ({
+        time: m.time as Time,
+        position: m.direction === "up" ? "aboveBar" as const : "belowBar" as const,
+        color: m.direction === "up" ? "#22c55e" : "#ef4444",
+        shape: "circle" as const,
+        text: m.text,
+      }));
+    if (markers.length > 0) {
+      candleSeries.setMarkers(markers);
     }
   }
 }
@@ -644,5 +1143,464 @@ function drawLiquidationHeatmap(
         title: `${level.leverage}x ${isLong ? "LONG" : "SHORT"} ${fmtUsd(level.estimated_usd)}`,
       }));
     }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Volume Heatmap — thermal color overlay behind candles              */
+/* ------------------------------------------------------------------ */
+
+interface HeatCell {
+  time: number;
+  priceLow: number;
+  priceHigh: number;
+  intensity: number;
+}
+
+function thermalColor(intensity: number): string {
+  // Thermal scale matching TradingMaster: dark red → red → orange → yellow → green → cyan
+  const a = Math.min(0.92, Math.max(0.25, intensity * 0.95 + 0.1));
+  if (intensity < 0.08) return `rgba(30, 5, 5, ${a})`;
+  if (intensity < 0.16) return `rgba(80, 12, 8, ${a})`;
+  if (intensity < 0.24) return `rgba(130, 22, 5, ${a})`;
+  if (intensity < 0.32) return `rgba(170, 40, 0, ${a})`;
+  if (intensity < 0.40) return `rgba(200, 70, 0, ${a})`;
+  if (intensity < 0.48) return `rgba(220, 110, 0, ${a})`;
+  if (intensity < 0.56) return `rgba(235, 160, 0, ${a})`;
+  if (intensity < 0.64) return `rgba(240, 210, 0, ${a})`;
+  if (intensity < 0.72) return `rgba(200, 235, 0, ${a})`;
+  if (intensity < 0.80) return `rgba(120, 230, 40, ${a})`;
+  if (intensity < 0.88) return `rgba(0, 220, 100, ${a})`;
+  if (intensity < 0.95) return `rgba(0, 220, 180, ${a})`;
+  return `rgba(0, 235, 235, ${a})`;
+}
+
+function computeHeatmapCells(
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  numBins = 60,
+): HeatCell[] {
+  if (klines.length < 2) return [];
+
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const k of klines) {
+    if (k.low < priceMin) priceMin = k.low;
+    if (k.high > priceMax) priceMax = k.high;
+  }
+  const range = priceMax - priceMin;
+  if (range <= 0) return [];
+
+  const binSize = range / numBins;
+  const lookback = Math.min(30, Math.floor(klines.length / 3));
+
+  // Rolling volume profile: for each candle, accumulate volume from lookback window
+  // This creates a dense, continuous heatmap like TradingMaster
+  const profileBins = new Float64Array(numBins); // reusable accumulator
+  const cells: HeatCell[] = [];
+  let globalMax = 0;
+
+  for (let i = 0; i < klines.length; i++) {
+    // Reset accumulator
+    profileBins.fill(0);
+
+    // Accumulate volume from lookback window
+    const windowStart = Math.max(0, i - lookback);
+    for (let j = windowStart; j <= i; j++) {
+      const k = klines[j]!;
+      const startBin = Math.max(0, Math.floor((k.low - priceMin) / binSize));
+      const endBin = Math.min(numBins - 1, Math.floor((k.high - priceMin) / binSize));
+      const numTouched = endBin - startBin + 1;
+      if (numTouched <= 0) continue;
+
+      const bodyLow = Math.min(k.open, k.close);
+      const bodyHigh = Math.max(k.open, k.close);
+
+      // Decay: more recent candles contribute more
+      const age = i - j;
+      const decay = 1.0 - age / (lookback + 1) * 0.6;
+
+      for (let b = startBin; b <= endBin; b++) {
+        const bMid = priceMin + (b + 0.5) * binSize;
+        const inBody = bMid >= bodyLow && bMid <= bodyHigh;
+        const weight = inBody ? 2.0 : 0.5;
+        profileBins[b]! += (k.volume / numTouched) * weight * decay;
+      }
+    }
+
+    // Find local max for this column
+    let colMax = 0;
+    for (let b = 0; b < numBins; b++) {
+      if (profileBins[b]! > colMax) colMax = profileBins[b]!;
+    }
+    if (colMax > globalMax) globalMax = colMax;
+
+    // Store all non-zero bins for this time column
+    const time = klines[i]!.time;
+    for (let b = 0; b < numBins; b++) {
+      if (profileBins[b]! > 0) {
+        cells.push({
+          time,
+          priceLow: priceMin + b * binSize,
+          priceHigh: priceMin + (b + 1) * binSize,
+          intensity: profileBins[b]!, // normalize later
+        });
+      }
+    }
+  }
+
+  // Normalize all cells by global max
+  if (globalMax > 0) {
+    for (const cell of cells) {
+      cell.intensity = cell.intensity / globalMax;
+    }
+  }
+
+  return cells;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Trading Sessions — colored background overlay by market session    */
+/* ------------------------------------------------------------------ */
+
+interface SessionDefinition {
+  readonly name: string;
+  readonly startHour: number;
+  readonly startMinute: number;
+  readonly endHour: number;
+  readonly endMinute: number;
+  readonly color: string;
+  readonly labelColor: string;
+}
+
+const TRADING_SESSIONS: readonly SessionDefinition[] = [
+  { name: "Tokyo", startHour: 0, startMinute: 0, endHour: 9, endMinute: 0, color: "rgba(250, 204, 21, 0.06)", labelColor: "#facc15" },
+  { name: "London", startHour: 8, startMinute: 0, endHour: 16, endMinute: 30, color: "rgba(34, 197, 94, 0.06)", labelColor: "#22c55e" },
+  { name: "NYSE", startHour: 13, startMinute: 30, endHour: 20, endMinute: 0, color: "rgba(96, 165, 250, 0.06)", labelColor: "#60a5fa" },
+] as const;
+
+function getSessionsForTimestamp(utcHour: number, utcMinute: number): SessionDefinition[] {
+  const timeInMinutes = utcHour * 60 + utcMinute;
+  const result: SessionDefinition[] = [];
+  for (const s of TRADING_SESSIONS) {
+    const start = s.startHour * 60 + s.startMinute;
+    const end = s.endHour * 60 + s.endMinute;
+    if (timeInMinutes >= start && timeInMinutes < end) {
+      result.push(s);
+    }
+  }
+  return result;
+}
+
+function setupSessionsOverlay(
+  chart: IChartApi,
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  container: HTMLDivElement,
+  chartHeight: number,
+): () => void {
+  if (klines.length === 0) return () => {};
+
+  const overlay = document.createElement("canvas");
+  overlay.style.position = "absolute";
+  overlay.style.top = "0";
+  overlay.style.left = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "5";
+  container.style.position = "relative";
+  container.appendChild(overlay);
+
+  // Pre-compute session assignments for each candle timestamp
+  const candleSessions: { time: number; sessions: SessionDefinition[] }[] = klines.map((k) => {
+    const date = new Date(k.time * 1000);
+    const utcH = date.getUTCHours();
+    const utcM = date.getUTCMinutes();
+    return { time: k.time, sessions: getSessionsForTimestamp(utcH, utcM) };
+  });
+
+  const sortedTimes = klines.map((k) => k.time);
+
+  let rafId = 0;
+
+  function render(): void {
+    const dpr = window.devicePixelRatio || 1;
+    const w = container.clientWidth;
+    const h = chartHeight;
+
+    overlay.width = Math.round(w * dpr);
+    overlay.height = Math.round(h * dpr);
+    overlay.style.width = w + "px";
+    overlay.style.height = h + "px";
+
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    ctx.scale(dpr, dpr);
+
+    // Calculate bar width from adjacent candles
+    let barW = 10;
+    for (let i = 0; i < sortedTimes.length - 1; i++) {
+      const x0 = chart.timeScale().timeToCoordinate(sortedTimes[i]! as Time);
+      const x1 = chart.timeScale().timeToCoordinate(sortedTimes[i + 1]! as Time);
+      if (x0 !== null && x1 !== null) {
+        barW = Math.max(4, Math.abs(x1 - x0));
+        break;
+      }
+    }
+
+    // Track session label positions to draw them once per visible session block
+    const drawnLabels = new Map<string, boolean>();
+
+    for (const entry of candleSessions) {
+      if (entry.sessions.length === 0) continue;
+
+      const x = chart.timeScale().timeToCoordinate(entry.time as Time);
+      if (x === null) continue;
+
+      // Draw background column for each active session (they blend additively)
+      for (const session of entry.sessions) {
+        ctx.fillStyle = session.color;
+        ctx.fillRect(x - barW / 2, 0, barW + 1, h);
+      }
+
+      // Draw session label at the top for the primary (latest-starting) session
+      const primary = entry.sessions[entry.sessions.length - 1]!;
+      const labelKey = `${primary.name}-${Math.floor(entry.time / 86400)}`;
+      if (!drawnLabels.has(labelKey)) {
+        drawnLabels.set(labelKey, true);
+        ctx.save();
+        ctx.font = "bold 9px Inter, sans-serif";
+        ctx.fillStyle = primary.labelColor + "70";
+        ctx.textAlign = "left";
+        ctx.fillText(primary.name, x - barW / 2 + 2, 12);
+        ctx.restore();
+      }
+    }
+
+    // Draw legend in top-right corner
+    ctx.save();
+    const legendX = w - 170;
+    const legendY = 14;
+    ctx.font = "10px Inter, sans-serif";
+    for (let i = 0; i < TRADING_SESSIONS.length; i++) {
+      const s = TRADING_SESSIONS[i]!;
+      const y = legendY + i * 14;
+      ctx.fillStyle = s.labelColor + "60";
+      ctx.fillRect(legendX, y - 6, 8, 8);
+      ctx.fillStyle = "#8b949e";
+      const startStr = `${String(s.startHour).padStart(2, "0")}:${String(s.startMinute).padStart(2, "0")}`;
+      const endStr = `${String(s.endHour).padStart(2, "0")}:${String(s.endMinute).padStart(2, "0")}`;
+      ctx.fillText(`${s.name} (${startStr}-${endStr} UTC)`, legendX + 12, y + 1);
+    }
+    ctx.restore();
+  }
+
+  function scheduleRender(): void {
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(render);
+  }
+
+  setTimeout(scheduleRender, 100);
+  setTimeout(scheduleRender, 400);
+  setTimeout(scheduleRender, 1000);
+
+  chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleRender);
+
+  const resizeObs = new ResizeObserver(scheduleRender);
+  resizeObs.observe(container);
+
+  const syncTimer = setInterval(scheduleRender, 500);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    clearInterval(syncTimer);
+    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleRender); } catch { /* */ }
+    resizeObs.disconnect();
+    overlay.remove();
+  };
+}
+
+function setupVolumeHeatmap(
+  chart: IChartApi,
+  candleSeries: ISeriesApi<"Candlestick">,
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+  container: HTMLDivElement,
+  chartHeight: number,
+): () => void {
+  const cells = computeHeatmapCells(klines, 50);
+  if (cells.length === 0) return () => {};
+
+  // Overlay canvas on top of the chart inside the container div
+  const overlay = document.createElement("canvas");
+  overlay.style.position = "absolute";
+  overlay.style.top = "0";
+  overlay.style.left = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "10";
+  container.style.position = "relative";
+  container.appendChild(overlay);
+
+  const sortedTimes = Array.from(new Set(cells.map((c) => c.time))).sort((a, b) => a - b);
+
+  let rafId = 0;
+
+  function render() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = container.clientWidth;
+    const h = chartHeight;
+
+    overlay.width = Math.round(w * dpr);
+    overlay.height = Math.round(h * dpr);
+    overlay.style.width = w + "px";
+    overlay.style.height = h + "px";
+
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    // Bar width from two adjacent visible times — extend slightly for overlap
+    let barW = 10;
+    for (let i = 0; i < sortedTimes.length - 1; i++) {
+      const x0 = chart.timeScale().timeToCoordinate(sortedTimes[i]! as Time);
+      const x1 = chart.timeScale().timeToCoordinate(sortedTimes[i + 1]! as Time);
+      if (x0 !== null && x1 !== null) {
+        barW = Math.max(4, Math.abs(x1 - x0) * 1.1); // 10% wider for seamless fill
+        break;
+      }
+    }
+
+    // Draw cells in CSS pixels, let canvas scaling handle DPI
+    ctx.scale(dpr, dpr);
+
+    for (const cell of cells) {
+      const x = chart.timeScale().timeToCoordinate(cell.time as Time);
+      if (x === null) continue;
+
+      const y1 = candleSeries.priceToCoordinate(cell.priceHigh);
+      const y2 = candleSeries.priceToCoordinate(cell.priceLow);
+      if (y1 === null || y2 === null) continue;
+
+      const top = Math.min(y1, y2);
+      const cellH = Math.abs(y2 - y1);
+      if (cellH < 0.5) continue;
+
+      ctx.fillStyle = thermalColor(cell.intensity);
+      ctx.fillRect(x - barW / 2, top, barW, Math.max(cellH, 1));
+    }
+  }
+
+  function scheduleRender() {
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(render);
+  }
+
+  // Staggered initial renders
+  setTimeout(scheduleRender, 100);
+  setTimeout(scheduleRender, 400);
+  setTimeout(scheduleRender, 1000);
+
+  // Re-render on pan/zoom
+  chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleRender);
+
+  // Re-render on resize
+  const resizeObs = new ResizeObserver(scheduleRender);
+  resizeObs.observe(container);
+
+  // Periodic sync for price auto-scale
+  const syncTimer = setInterval(scheduleRender, 300);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    clearInterval(syncTimer);
+    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleRender); } catch { /* */ }
+    resizeObs.disconnect();
+    overlay.remove();
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  News Impact Markers — overlay news events on chart timeline        */
+/* ------------------------------------------------------------------ */
+
+function drawNewsMarkers(
+  candleSeries: ISeriesApi<"Candlestick">,
+  news: NewsItemData[],
+  klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
+): void {
+  if (klines.length === 0 || news.length === 0) return;
+
+  const candleTimes = klines.map((k) => k.time).sort((a, b) => a - b);
+  const firstTime = candleTimes[0]!;
+  const lastTime = candleTimes[candleTimes.length - 1]!;
+
+  /** Snap a unix timestamp to the nearest candle time via binary search */
+  function snapToCandle(timestamp: number): number | null {
+    if (timestamp < firstTime - 86400 || timestamp > lastTime + 86400) return null;
+    let lo = 0;
+    let hi = candleTimes.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (candleTimes[mid]! < timestamp) lo = mid + 1;
+      else hi = mid;
+    }
+    const best = lo > 0 && Math.abs(candleTimes[lo - 1]! - timestamp) < Math.abs(candleTimes[lo]! - timestamp)
+      ? candleTimes[lo - 1]!
+      : candleTimes[lo]!;
+    return best;
+  }
+
+  function sentimentCategory(sentiment: number): "bullish" | "bearish" | "neutral" {
+    if (sentiment > 0.2) return "bullish";
+    if (sentiment < -0.2) return "bearish";
+    return "neutral";
+  }
+
+  // Group news by snapped candle time — keep the most impactful per candle
+  const grouped = new Map<number, { sentiment: "bullish" | "bearish" | "neutral"; title: string; sentimentValue: number }>();
+
+  for (const item of news) {
+    const rawTs = item.timestamp
+      ? new Date(item.timestamp).getTime()
+      : new Date(item.published).getTime();
+    if (Number.isNaN(rawTs)) continue;
+    const ts = Math.floor(rawTs / 1000);
+    const snapped = snapToCandle(ts);
+    if (snapped === null) continue;
+
+    const cat = sentimentCategory(item.sentiment);
+    const existing = grouped.get(snapped);
+    if (!existing || Math.abs(item.sentiment) > Math.abs(existing.sentimentValue)) {
+      grouped.set(snapped, { sentiment: cat, title: item.title, sentimentValue: item.sentiment });
+    }
+  }
+
+  const markers: SeriesMarker<Time>[] = Array.from(grouped.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([time, data]) => {
+      const shape = data.sentiment === "bullish"
+        ? "arrowUp" as const
+        : data.sentiment === "bearish"
+          ? "arrowDown" as const
+          : "circle" as const;
+
+      const color = data.sentiment === "bullish"
+        ? "#22c55e"
+        : data.sentiment === "bearish"
+          ? "#ef4444"
+          : "#9ca3af";
+
+      const position = data.sentiment === "bearish" ? "aboveBar" as const : "belowBar" as const;
+
+      const truncatedTitle = data.title.length > 30 ? data.title.slice(0, 27) + "..." : data.title;
+
+      return {
+        time: time as Time,
+        position,
+        color,
+        shape,
+        text: truncatedTitle,
+      };
+    });
+
+  if (markers.length > 0) {
+    candleSeries.setMarkers(markers);
   }
 }

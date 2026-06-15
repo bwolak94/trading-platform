@@ -3,9 +3,8 @@ and learns from trade outcomes via a reward function."""
 
 import asyncio
 import logging
-import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,7 +15,9 @@ from app.ai.regime.classifier import RegimeClassifier
 from app.ai.strategies.base import MarketContext
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
-from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks, find_fair_value_gaps
+from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks
+from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
 from app.data.processors.feature_engineer import compute_features
 
@@ -51,6 +52,7 @@ class TradeSignal:
     conditions: list[dict]  # [{label, met}]
     ui_elements: dict  # sl_box, tp_boxes for chart rendering
     timestamp: str
+    trailing_stop_pct: float = 0.0  # 0 = disabled, e.g. 0.02 = 2% trail
 
     def to_dict(self) -> dict:
         """Serialize signal to a plain dictionary."""
@@ -69,6 +71,7 @@ class TradeSignal:
             "conditions": self.conditions,
             "ui_elements": self.ui_elements,
             "timestamp": self.timestamp,
+            "trailing_stop_pct": self.trailing_stop_pct,
         }
 
 
@@ -141,6 +144,8 @@ class TradingAgent:
             "mean_reversion": MeanReversionStrategy(),
             "smc": SMCStrategy(),
             "volume_breakout": VolumeBreakoutStrategy(),
+            "rsi_scalping": RSIScalpingStrategy(),
+            "trend_trader": TrendTraderStrategy(),
         }
         self._classifier = RegimeClassifier()
         self._reward_engine = RewardEngine()
@@ -221,6 +226,7 @@ class TradingAgent:
             if result and result.confidence >= MIN_CONFIDENCE:
                 self._active_signals[symbol] = result
                 self._signal_history.append(result.to_dict())
+                await self._persist_signal(result)
                 logger.info(
                     "NEW SIGNAL: %s %s @ $%s (conf=%s%%, strategy=%s)",
                     symbol, result.action, result.entry,
@@ -300,7 +306,45 @@ class TradingAgent:
                     symbol, signal.entry,
                 )
 
+        # Trailing stop: update SL if price has moved favorably
+        trailing_pct = getattr(signal, "trailing_stop_pct", 0)
+        if trailing_pct > 0:
+            trail = signal.entry * trailing_pct
+            if is_long:
+                new_sl = price - trail
+                if new_sl > signal.stop_loss:
+                    signal.stop_loss = round(new_sl, 8)
+            else:
+                new_sl = price + trail
+                if new_sl < signal.stop_loss:
+                    signal.stop_loss = round(new_sl, 8)
+
         return None
+
+    async def _persist_signal(self, signal: "TradeSignal") -> None:
+        """Persist a new trading signal to the database for chart overlay and history."""
+        try:
+            from app.core.database import async_session
+            from app.models.signal import Signal as SignalModel
+
+            tp_levels = signal.tp_levels if hasattr(signal, "tp_levels") else []
+            async with async_session() as session:
+                row = SignalModel(
+                    asset=signal.symbol.replace("/", "").upper(),
+                    direction=signal.action,
+                    confidence=signal.confidence,
+                    regime=signal.regime if hasattr(signal, "regime") else "UNKNOWN",
+                    entry_price=signal.entry,
+                    stop_loss=signal.sl if hasattr(signal, "sl") else None,
+                    take_profit_1=tp_levels[0] if len(tp_levels) > 0 else None,
+                    take_profit_2=tp_levels[1] if len(tp_levels) > 1 else None,
+                    factors=signal.conditions if hasattr(signal, "conditions") else [],
+                    status="ACTIVE",
+                )
+                session.add(row)
+                await session.commit()
+        except Exception as exc:
+            logger.debug("Failed to persist signal to DB: %s", exc)
 
     def _close_trade(self, symbol: str, exit_price: float, hit_level: str) -> None:
         """Close a trade, calculate reward, record lesson, remove from active."""
@@ -584,7 +628,7 @@ class TradingAgent:
                 bias, entry = "SHORT", round(rl, 2)
                 sl = round(rh + atr, 2)
             conditions = [
-                ("Tight range", (rh - rl) / atr < 2),
+                ("Tight range", (rh - rl) / atr < 2 if atr > 0 else False),
                 ("Volume>2x", vol_ratio > 2),
                 ("Breakout", close > rh or close < rl),
             ]
@@ -703,6 +747,7 @@ class TradingAgent:
             conditions=setup["conditions"],
             ui_elements=ui,
             timestamp=datetime.now(timezone.utc).isoformat(),
+            trailing_stop_pct=getattr(signal, "trailing_stop_pct", 0.0),
         )
 
     def _signal_from_setup(

@@ -3,7 +3,6 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Numeric, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID

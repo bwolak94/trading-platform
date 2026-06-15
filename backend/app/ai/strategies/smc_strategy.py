@@ -9,9 +9,12 @@ from app.ai.strategies.base import BaseStrategy, MarketContext, SignalResult
 
 logger = logging.getLogger(__name__)
 
+# Default impulse ratio threshold for order block detection
+DEFAULT_IMPULSE_RATIO_THRESHOLD = 1.5
+
 
 def find_order_blocks(
-    df: pd.DataFrame, lookback: int = 20
+    df: pd.DataFrame, lookback: int = 20, impulse_threshold: float = DEFAULT_IMPULSE_RATIO_THRESHOLD,
 ) -> list[dict]:
     """Detect order blocks — last opposing candle before an impulse move.
 
@@ -27,20 +30,20 @@ def find_order_blocks(
     recent = df.iloc[-lookback:]
     close = recent["close"].values
     open_ = recent["open"].values
-    high = recent["high"].values
-    low = recent["low"].values
+    recent["high"].values
+    recent["low"].values
     atr = recent["atr_14"].values if "atr_14" in recent.columns else np.ones(len(recent))
 
     for i in range(1, len(recent) - 1):
         body = abs(close[i] - open_[i])
-        prev_body = abs(close[i - 1] - open_[i - 1])
+        abs(close[i - 1] - open_[i - 1])
         impulse_ratio = body / atr[i] if atr[i] > 0 else 0
 
         # Bullish OB: previous candle bearish, current candle strong bullish impulse
         if (
             close[i] > open_[i]
             and close[i - 1] < open_[i - 1]
-            and impulse_ratio > 1.5
+            and impulse_ratio > impulse_threshold
         ):
             blocks.append({
                 "type": "bullish",
@@ -55,7 +58,7 @@ def find_order_blocks(
         if (
             close[i] < open_[i]
             and close[i - 1] > open_[i - 1]
-            and impulse_ratio > 1.5
+            and impulse_ratio > impulse_threshold
         ):
             blocks.append({
                 "type": "bearish",
@@ -125,6 +128,9 @@ class SMCStrategy(BaseStrategy):
     OB_LOOKBACK = 20
     FVG_LOOKBACK = 20
     SL_BUFFER_PCT = 0.003  # 0.3% below/above OB
+    IMPULSE_RATIO_THRESHOLD = 1.5
+    TP1_MULTIPLIER = 1.5
+    TP2_MULTIPLIER = 3.0
 
     def generate_signal(
         self,
@@ -142,7 +148,7 @@ class SMCStrategy(BaseStrategy):
         close = float(last.get("close", 0))
         atr = float(last.get("atr_14", 0))
 
-        order_blocks = find_order_blocks(df, self.OB_LOOKBACK)
+        order_blocks = find_order_blocks(df, self.OB_LOOKBACK, self.IMPULSE_RATIO_THRESHOLD)
         fvgs = find_fair_value_gaps(df, self.FVG_LOOKBACK)
 
         long_signal = self._check_long(close, atr, order_blocks, fvgs, df)
@@ -286,8 +292,8 @@ class SMCStrategy(BaseStrategy):
     ) -> SignalResult:
         """Build SignalResult with OB-based levels."""
         ob = check_result["ob"]
-        close = float(last.get("close", 0))
-        atr = float(last.get("atr_14", 0))
+        float(last.get("close", 0))
+        float(last.get("atr_14", 0))
 
         entry = ob["mid"]  # entry at middle of Order Block
 
@@ -295,13 +301,13 @@ class SMCStrategy(BaseStrategy):
             stop_loss = ob["low"] * (1 - self.SL_BUFFER_PCT)
             # TP targets: next resistance / swing high
             risk = entry - stop_loss
-            tp1 = entry + risk * 1.5
-            tp2 = entry + risk * 3.0
+            tp1 = entry + risk * self.TP1_MULTIPLIER
+            tp2 = entry + risk * self.TP2_MULTIPLIER
         else:
             stop_loss = ob["high"] * (1 + self.SL_BUFFER_PCT)
             risk = stop_loss - entry
-            tp1 = entry - risk * 1.5
-            tp2 = entry - risk * 3.0
+            tp1 = entry - risk * self.TP1_MULTIPLIER
+            tp2 = entry - risk * self.TP2_MULTIPLIER
 
         risk_abs = abs(entry - stop_loss)
         risk_reward = abs(tp1 - entry) / risk_abs if risk_abs > 0 else 0

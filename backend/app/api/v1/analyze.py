@@ -1,29 +1,37 @@
 """On-demand market analysis — runs regime classifier + strategies on live data."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 import pandas as pd
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.ai.regime.classifier import RegimeClassifier
 from app.ai.strategies.base import MarketContext, SignalResult
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
 from app.ai.strategies.smc_strategy import SMCStrategy
 from app.ai.strategies.trend_following import TrendFollowingStrategy
+from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
+from app.core.symbols import ALL_SYMBOLS, VALID_TIMEFRAMES
 from app.data.processors.feature_engineer import compute_features
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 
+VALID_ASSETS = set(ALL_SYMBOLS)
+
+from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
+
 STRATEGIES = {
     "trend_following": TrendFollowingStrategy(),
     "mean_reversion": MeanReversionStrategy(),
     "smc": SMCStrategy(),
     "volume_breakout": VolumeBreakoutStrategy(),
+    "rsi_scalping": RSIScalpingStrategy(),
+    "trend_trader": TrendTraderStrategy(),
 }
 
 STRATEGY_DESCRIPTIONS = {
@@ -31,6 +39,8 @@ STRATEGY_DESCRIPTIONS = {
     "mean_reversion": "Identifies oversold/overbought conditions using RSI divergence and Bollinger Bands. Best in consolidation.",
     "smc": "Smart Money Concepts — finds Order Blocks and Fair Value Gaps for institutional-level entries. Best in trends.",
     "volume_breakout": "Detects range breakouts confirmed by volume spikes. Works in all market conditions.",
+    "rsi_scalping": "RSI + Stochastic + DMI Stochastic crossover scalping. BUY when DMI Stoch crosses above 10, SELL when crosses below 90. Works in all regimes.",
+    "trend_trader": "Ichimoku Cloud + Fibonacci + S/R confluence strategy. Uses TK cross above/below cloud with Fib level and S/R support. Works in all regimes.",
 }
 
 SYMBOL_MAP = {
@@ -94,7 +104,7 @@ def _build_suggested_setup(
     adx = float(last.get("adx_14", 0))
     bb_upper = float(last.get("bb_upper", close + atr))
     bb_lower = float(last.get("bb_lower", close - atr))
-    bb_mid = float(last.get("bb_middle", close))
+    float(last.get("bb_middle", close))
 
     if atr <= 0:
         atr = close * 0.01
@@ -262,6 +272,16 @@ async def run_analysis(
 
     Returns regime classification, strategy signals, and market summary.
     """
+    # Normalize asset: accept both "BTCUSDT" and "BTC/USDT" formats
+    if asset not in VALID_ASSETS:
+        _normalized = next((v for v in VALID_ASSETS if v.replace("/", "") == asset.upper()), None)
+        if _normalized:
+            asset = _normalized
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid asset. Valid: {sorted(VALID_ASSETS)}")
+    if timeframe not in VALID_TIMEFRAMES:
+        raise HTTPException(status_code=400, detail=f"Invalid timeframe. Valid: {sorted(VALID_TIMEFRAMES)}")
+
     # Fetch live data
     df = await _fetch_binance_klines(asset, timeframe, limit=500)
     if df.empty or len(df) < 50:

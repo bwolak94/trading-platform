@@ -3,16 +3,24 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select, and_
+import numpy as np
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal import Signal
 from app.models.user_settings import UserSettings
 
 logger = logging.getLogger(__name__)
+
+CORRELATED_GROUPS = {
+    "large_cap": {"BTC/USDT", "ETH/USDT"},
+    "alt_l1": {"SOL/USDT", "AVAX/USDT", "DOT/USDT", "ATOM/USDT", "ADA/USDT"},
+    "defi": {"UNI/USDT", "LINK/USDT", "AAVE/USDT"},
+    "meme": {"DOGE/USDT", "PEPE/USDT"},
+    "l2": {"ARB/USDT", "OP/USDT", "MATIC/USDT"},
+}
 
 
 @dataclass
@@ -27,6 +35,10 @@ class PositionSize:
 
 class RiskEngine:
     """Manages risk calculations, kill switch, and position sizing."""
+
+    MAX_CONCURRENT_TRADES = 8
+    _recovery_mode: bool = False
+    _recovery_scale: float = 0.5
 
     async def check_kill_switch(self, user_id: str, db: AsyncSession) -> bool:
         """Check if the system should be paused due to excessive drawdown.
@@ -92,6 +104,64 @@ class RiskEngine:
             position_pct=round(position_pct, 2),
             risk_amount=round(risk_amount, 2),
         )
+
+    def calculate_position_with_time_decay(
+        self,
+        capital: float,
+        risk_pct: float,
+        entry: float,
+        stop_loss: float,
+        estimated_hours: float,
+    ) -> PositionSize:
+        """Reduce position for longer trades."""
+        base = self.calculate_position_size(capital, risk_pct, entry, stop_loss)
+        if estimated_hours > 48:
+            decay = max(0.5, 1.0 - (estimated_hours - 48) / 200)
+            return PositionSize(
+                units=round(base.units * decay, 8),
+                position_value=round(base.position_value * decay, 2),
+                position_pct=round(base.position_pct * decay, 2),
+                risk_amount=round(base.risk_amount * decay, 2),
+            )
+        return base
+
+    def check_sl_overlap(
+        self,
+        new_sl: float,
+        new_tp1: float,
+        active_signals: list[dict],
+    ) -> float:
+        """Returns discount (0.5-1.0) if SL overlaps with existing TPs."""
+        for sig in active_signals:
+            existing_tp = sig.get("take_profit_1", 0)
+            if existing_tp > 0:
+                overlap = abs(new_sl - existing_tp) / max(new_sl, 0.001) * 100
+                if overlap < 2.0:
+                    return 0.5
+        return 1.0
+
+    def get_correlation_discount(self, symbol: str, active_positions: dict[str, str]) -> float:
+        """Returns a multiplier (0.3-1.0) based on correlated open positions."""
+        my_group = None
+        for group, symbols in CORRELATED_GROUPS.items():
+            if symbol in symbols:
+                my_group = group
+                break
+        if not my_group:
+            return 1.0
+
+        same_dir_count = 0
+        for pos_symbol, pos_direction in active_positions.items():
+            if pos_symbol != symbol and pos_symbol in CORRELATED_GROUPS.get(my_group, set()):
+                same_dir_count += 1
+
+        if same_dir_count >= 3:
+            return 0.3  # Heavy penalty
+        if same_dir_count >= 2:
+            return 0.5
+        if same_dir_count >= 1:
+            return 0.7
+        return 1.0
 
     def calculate_position_size_volatility_adjusted(
         self,
@@ -209,6 +279,74 @@ class RiskEngine:
             "streak": streak,
         }
 
+    async def check_daily_loss_limit(self, user_id: str, db: AsyncSession, daily_limit_pct: float = 3.0) -> bool:
+        """Check if daily P&L has exceeded daily loss limit. Returns True if limit hit."""
+        user_settings = await self._get_user_settings(user_id, db)
+        if not user_settings or not user_settings.capital:
+            return False
+
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await db.execute(
+            select(Signal).where(
+                and_(Signal.created_at >= today_start, Signal.status.in_(["TP1_HIT", "TP2_HIT", "SL_HIT"]))
+            )
+        )
+        closed_today = result.scalars().all()
+
+        daily_pnl = sum(self._calculate_signal_pnl(s, float(user_settings.capital)) for s in closed_today)
+        daily_pnl_pct = (daily_pnl / float(user_settings.capital)) * 100
+
+        if daily_pnl_pct <= -daily_limit_pct:
+            logger.warning("Daily loss limit hit: %.2f%% (limit: -%.1f%%)", daily_pnl_pct, daily_limit_pct)
+            return True
+        return False
+
+    async def check_max_concurrent(self, db: AsyncSession) -> bool:
+        """Returns True if at max concurrent trades."""
+        result = await db.execute(
+            select(func.count(Signal.id)).where(Signal.status == "ACTIVE")
+        )
+        count = result.scalar() or 0
+        return count >= self.MAX_CONCURRENT_TRADES
+
+    def is_recovery_mode(self) -> bool:
+        """Check if recovery mode is active."""
+        return self._recovery_mode
+
+    def set_recovery_mode(self, active: bool):
+        """Enable or disable recovery mode."""
+        self._recovery_mode = active
+        if active:
+            logger.info("Recovery mode ACTIVATED: position sizes reduced to %.0f%%", self._recovery_scale * 100)
+
+    def get_position_scale(self) -> float:
+        """Get current position scale factor."""
+        return self._recovery_scale if self._recovery_mode else 1.0
+
+    async def calculate_portfolio_heat(self, db: AsyncSession, capital: float) -> float:
+        """Calculate total portfolio risk as % of capital."""
+        result = await db.execute(
+            select(Signal).where(Signal.status == "ACTIVE")
+        )
+        active = result.scalars().all()
+        total_risk = 0.0
+        for sig in active:
+            if sig.entry_price and sig.stop_loss:
+                risk_per_unit = abs(float(sig.entry_price) - float(sig.stop_loss))
+                pct = float(sig.position_size_pct or 0) / 100
+                total_risk += risk_per_unit * pct * capital / max(float(sig.entry_price), 0.001)
+        return round(total_risk / max(capital, 1) * 100, 2)
+
+    def adjust_risk_by_winrate(self, base_risk_pct: float, recent_win_rate: float) -> float:
+        """Adjust risk percentage based on recent win rate."""
+        if recent_win_rate < 0.35:
+            return round(base_risk_pct * 0.6, 2)  # Reduce 40%
+        if recent_win_rate < 0.45:
+            return round(base_risk_pct * 0.8, 2)  # Reduce 20%
+        if recent_win_rate > 0.70:
+            return round(base_risk_pct * 1.15, 2)  # Boost 15%
+        return base_risk_pct
+
     async def _calculate_streak(self, db: AsyncSession) -> dict[str, int]:
         """Calculate current win/loss streak."""
         result = await db.execute(
@@ -235,6 +373,88 @@ class RiskEngine:
                 break
 
         return {"wins": wins, "losses": losses}
+
+    def calculate_var(self, returns: list[float], confidence: float = 0.95) -> float:
+        """Calculate Value at Risk at given confidence level using historical simulation.
+
+        VaR represents the loss threshold at the given confidence level — i.e. with
+        ``confidence`` probability losses will not exceed this value.
+
+        Args:
+            returns: List of percentage returns (can be negative for losses).
+            confidence: Confidence level, e.g. 0.95 for 95% VaR.
+
+        Returns:
+            VaR as a positive number representing potential loss percentage.
+            Returns 0.0 if ``returns`` is empty.
+        """
+        if not returns:
+            return 0.0
+        arr = np.array(returns, dtype=float)
+        # VaR is the percentile of *losses* — negate returns so losses are positive
+        losses = -arr
+        var = float(np.percentile(losses, confidence * 100))
+        return round(max(var, 0.0), 4)
+
+    def calculate_cvar(self, returns: list[float], confidence: float = 0.95) -> float:
+        """Calculate Conditional VaR (Expected Shortfall) — average loss beyond VaR.
+
+        CVaR is the expected loss given that the loss exceeds the VaR threshold,
+        providing a fuller picture of tail risk than VaR alone.
+
+        Args:
+            returns: List of percentage returns.
+            confidence: Confidence level, e.g. 0.95 for 95% CVaR.
+
+        Returns:
+            CVaR as a positive number representing expected tail loss percentage.
+            Returns 0.0 if ``returns`` is empty or no tail observations exist.
+        """
+        if not returns:
+            return 0.0
+        arr = np.array(returns, dtype=float)
+        losses = -arr
+        var_threshold = np.percentile(losses, confidence * 100)
+        tail_losses = losses[losses >= var_threshold]
+        if len(tail_losses) == 0:
+            return round(float(var_threshold), 4)
+        cvar = float(np.mean(tail_losses))
+        return round(max(cvar, 0.0), 4)
+
+    def calculate_portfolio_var(
+        self,
+        positions: list[dict],
+        confidence: float = 0.95,
+    ) -> dict[str, float]:
+        """Calculate portfolio-level VaR and CVaR from a list of position dicts.
+
+        Each position dict should contain at minimum a ``returns`` key with a list
+        of float percentage returns. If individual position returns are not available
+        the method falls back to pnl_pct series from closed position records.
+
+        Args:
+            positions: List of position dicts, each with a ``returns`` list of floats.
+            confidence: Primary confidence level (default 0.95).
+
+        Returns:
+            Dict with keys: ``var_95``, ``cvar_95``, ``var_99``, ``cvar_99``.
+        """
+        # Aggregate all returns across all positions into a combined series
+        all_returns: list[float] = []
+        for pos in positions:
+            pos_returns = pos.get("returns", [])
+            if isinstance(pos_returns, list):
+                all_returns.extend(float(r) for r in pos_returns)
+
+        if not all_returns:
+            return {"var_95": 0.0, "cvar_95": 0.0, "var_99": 0.0, "cvar_99": 0.0}
+
+        return {
+            "var_95": self.calculate_var(all_returns, confidence=0.95),
+            "cvar_95": self.calculate_cvar(all_returns, confidence=0.95),
+            "var_99": self.calculate_var(all_returns, confidence=0.99),
+            "cvar_99": self.calculate_cvar(all_returns, confidence=0.99),
+        }
 
     async def _get_user_settings(
         self, user_id: str, db: AsyncSession

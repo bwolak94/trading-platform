@@ -1,103 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * useWebSocket — backwards-compatible hook that delegates to WebSocketContext.
+ *
+ * Existing components that import useWebSocket continue to work unchanged.
+ * New components should prefer useWebSocketContext() directly for richer
+ * per-channel subscriptions and batch message access.
+ *
+ * NOTE: This hook only exposes the last message in the batch to preserve the
+ * existing interface.  For use-cases that must process every message (e.g.
+ * order-book updates, liquidation events), consume lastBatch from
+ * useWebSocketContext() instead.
+ */
+
+import { useWebSocketContext } from "../contexts/WebSocketContext";
 import type { WSMessage } from "../types";
-
-const WS_URL =
-  (window.location.protocol === "https:" ? "wss://" : "ws://") +
-  window.location.host +
-  "/ws";
-
-const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 
 interface UseWebSocketReturn {
   isConnected: boolean;
   lastMessage: WSMessage | null;
+  /** Full batch of messages received in the last 100 ms flush. */
+  lastBatch: WSMessage[];
   subscribe: (channels: string[]) => void;
   unsubscribe: (channels: string[]) => void;
 }
 
 export function useWebSocket(): UseWebSocketReturn {
-  const [isConnected, setIsConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const retriesRef = useRef(0);
-  const mountedRef = useRef(true);
-  const channelsRef = useRef<Set<string>>(new Set());
+  const { isConnected, subscribe, unsubscribe, lastBatch } =
+    useWebSocketContext();
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  // Derive the "last message" as the most recent item in the batch for
+  // backwards compat.  Components that only care about one message type should
+  // call lastMessageByType(type) directly via useWebSocketContext().
+  const lastMessage = lastBatch.length > 0
+    ? lastBatch[lastBatch.length - 1] ?? null
+    : null;
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      retriesRef.current = 0;
-
-      // Resubscribe to any channels from before reconnect
-      if (channelsRef.current.size > 0) {
-        ws.send(
-          JSON.stringify({
-            action: "subscribe",
-            channels: Array.from(channelsRef.current),
-          }),
-        );
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as WSMessage;
-        setLastMessage(data);
-      } catch {
-        // Ignore malformed messages
-      }
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-      wsRef.current = null;
-
-      if (!mountedRef.current) return;
-
-      const delay =
-        RECONNECT_DELAYS[
-          Math.min(retriesRef.current, RECONNECT_DELAYS.length - 1)
-        ] ?? RECONNECT_DELAYS[RECONNECT_DELAYS.length - 1]!;
-      retriesRef.current += 1;
-      setTimeout(connect, delay);
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    connect();
-    return () => {
-      mountedRef.current = false;
-      wsRef.current?.close();
-    };
-  }, [connect]);
-
-  const subscribe = useCallback((channels: string[]) => {
-    channels.forEach((c) => channelsRef.current.add(c));
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({ action: "subscribe", channels }),
-      );
-    }
-  }, []);
-
-  const unsubscribe = useCallback((channels: string[]) => {
-    channels.forEach((c) => channelsRef.current.delete(c));
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({ action: "unsubscribe", channels }),
-      );
-    }
-  }, []);
-
-  return { isConnected, lastMessage, subscribe, unsubscribe };
+  return { isConnected, lastMessage, lastBatch, subscribe, unsubscribe };
 }
