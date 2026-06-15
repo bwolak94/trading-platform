@@ -107,7 +107,6 @@ async def get_deep_health() -> dict[str, Any]:
         per-dependency ``checks`` map including latency_ms.
     """
     import time
-    import asyncio
     import httpx
 
     checks: dict[str, Any] = {}

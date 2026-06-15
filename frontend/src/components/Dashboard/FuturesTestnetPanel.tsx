@@ -205,7 +205,7 @@ export default function FuturesTestnetPanel() {
           <button
             key={tab}
             type="button"
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setActiveTab(tab); }}
             className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
               activeTab === tab
                 ? "border-b-2 border-yellow-400 text-yellow-400"
@@ -248,7 +248,7 @@ export default function FuturesTestnetPanel() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => closeMutation.mutate(pos.symbol)}
+                    onClick={() => { closeMutation.mutate(pos.symbol); }}
                     disabled={closeMutation.isPending}
                     className="rounded border border-red-500/50 px-2 py-0.5 text-[10px] text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                   >
@@ -302,7 +302,7 @@ export default function FuturesTestnetPanel() {
               <div key={order.order_id} className="flex items-center justify-between rounded border border-border bg-background px-3 py-2">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-mono font-bold text-white">{order.symbol}</span>
-                  <span className={`${order.side === "BUY" ? "text-green-400" : "text-red-400"}`}>{order.side}</span>
+                  <span className={order.side === "BUY" ? "text-green-400" : "text-red-400"}>{order.side}</span>
                   <span className="text-gray-500">{order.type}</span>
                   <span className="font-mono text-gray-300">
                     qty={order.orig_qty} {order.price > 0 ? `@ ${order.price.toLocaleString()}` : "MKT"}
@@ -311,7 +311,7 @@ export default function FuturesTestnetPanel() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => cancelOrderMutation.mutate({ symbol: order.symbol, orderId: order.order_id })}
+                  onClick={() => { cancelOrderMutation.mutate({ symbol: order.symbol, orderId: order.order_id }); }}
                   disabled={cancelOrderMutation.isPending}
                   className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-50"
                 >
@@ -332,7 +332,7 @@ export default function FuturesTestnetPanel() {
               <input
                 type="text"
                 value={form.symbol}
-                onChange={(e) => handleFormChange("symbol", e.target.value.toUpperCase())}
+                onChange={(e) => { handleFormChange("symbol", e.target.value.toUpperCase()); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-yellow-500"
                 placeholder="BTCUSDT"
               />
@@ -344,7 +344,7 @@ export default function FuturesTestnetPanel() {
                   <button
                     key={d}
                     type="button"
-                    onClick={() => handleFormChange("direction", d)}
+                    onClick={() => { handleFormChange("direction", d); }}
                     className={`flex-1 rounded py-1.5 text-xs font-bold transition-colors ${
                       form.direction === d
                         ? d === "LONG" ? "bg-green-500/20 text-green-400 border border-green-500/50" : "bg-red-500/20 text-red-400 border border-red-500/50"
@@ -364,7 +364,7 @@ export default function FuturesTestnetPanel() {
               <input
                 type="number"
                 value={form.entry_price}
-                onChange={(e) => handleFormChange("entry_price", e.target.value)}
+                onChange={(e) => { handleFormChange("entry_price", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-yellow-500"
                 placeholder="Market"
               />
@@ -374,7 +374,7 @@ export default function FuturesTestnetPanel() {
               <input
                 type="number"
                 value={form.stop_loss}
-                onChange={(e) => handleFormChange("stop_loss", e.target.value)}
+                onChange={(e) => { handleFormChange("stop_loss", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-yellow-500"
                 placeholder="Stop price"
               />
@@ -384,7 +384,7 @@ export default function FuturesTestnetPanel() {
               <input
                 type="number"
                 value={form.take_profit_1}
-                onChange={(e) => handleFormChange("take_profit_1", e.target.value)}
+                onChange={(e) => { handleFormChange("take_profit_1", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-yellow-500"
                 placeholder="TP1 price"
               />
@@ -394,7 +394,7 @@ export default function FuturesTestnetPanel() {
               <input
                 type="number"
                 value={form.take_profit_2}
-                onChange={(e) => handleFormChange("take_profit_2", e.target.value)}
+                onChange={(e) => { handleFormChange("take_profit_2", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-yellow-500"
                 placeholder="TP2 price (optional)"
               />
@@ -412,7 +412,7 @@ export default function FuturesTestnetPanel() {
                 min={1}
                 max={50}
                 value={form.leverage}
-                onChange={(e) => handleFormChange("leverage", parseInt(e.target.value))}
+                onChange={(e) => { handleFormChange("leverage", parseInt(e.target.value)); }}
                 className="w-full accent-yellow-400"
               />
               <div className="flex justify-between text-[9px] text-gray-600">
@@ -424,7 +424,7 @@ export default function FuturesTestnetPanel() {
               <input
                 type="number"
                 value={form.usdt_size}
-                onChange={(e) => handleFormChange("usdt_size", parseFloat(e.target.value))}
+                onChange={(e) => { handleFormChange("usdt_size", parseFloat(e.target.value)); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-yellow-500"
                 min={10}
               />
@@ -436,7 +436,7 @@ export default function FuturesTestnetPanel() {
 
           {openMutation.isError && (
             <p className="rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
-              {(openMutation.error as Error).message}
+              {(openMutation.error).message}
             </p>
           )}
           {openMutation.isSuccess && (
@@ -447,7 +447,7 @@ export default function FuturesTestnetPanel() {
 
           <button
             type="button"
-            onClick={() => openMutation.mutate(form)}
+            onClick={() => { openMutation.mutate(form); }}
             disabled={openMutation.isPending || !form.symbol}
             className={`w-full rounded py-2 text-sm font-bold transition-colors disabled:opacity-50 ${
               form.direction === "LONG"

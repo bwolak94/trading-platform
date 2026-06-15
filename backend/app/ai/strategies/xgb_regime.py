@@ -8,7 +8,6 @@ The model is loaded lazily on first call and gracefully degrades to returning
 None if XGBoost is not installed or no trained model file exists.
 """
 
-import os
 from pathlib import Path
 from typing import Any
 

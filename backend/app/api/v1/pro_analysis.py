@@ -1,10 +1,8 @@
 """Professional Technical Analysis Chat — deep multi-source analysis with Claude."""
 
-import base64
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
 import httpx
 import pandas as pd
@@ -283,7 +281,7 @@ async def pro_analysis(request: ProAnalysisRequest) -> ProAnalysisResponse:
         sentiment = agg.get_sentiment_snapshot()
         recent_news = agg.get_news(limit=10)
         headlines = [n["title"] for n in recent_news[:5]]
-        news_context = f"\nRECENT NEWS:\n" + "\n".join(f"- {h}" for h in headlines)
+        news_context = "\nRECENT NEWS:\n" + "\n".join(f"- {h}" for h in headlines)
         news_context += f"\nGlobal Sentiment: {sentiment['global_sentiment']}"
         if sentiment["emergency_active"]:
             news_context += f"\n⚠️ EMERGENCY: {sentiment['emergency_reason']}"

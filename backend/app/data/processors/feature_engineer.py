@@ -89,7 +89,7 @@ def _validate_columns(df: pd.DataFrame) -> None:
     bad_count = bad_mask.sum()
     if bad_count > 0:
         logger.warning("OHLC REPAIR: Fixing %d candles with invalid OHLC order", bad_count)
-        median_price = (df["open"] + df["high"] + df["low"] + df["close"]) / 4
+        (df["open"] + df["high"] + df["low"] + df["close"]) / 4
         df.loc[bad_mask, "low"] = df.loc[bad_mask, ["open", "high", "low", "close"]].min(axis=1)
         df.loc[bad_mask, "high"] = df.loc[bad_mask, ["open", "high", "low", "close"]].max(axis=1)
 
@@ -247,7 +247,7 @@ def _add_vwap_indicator(df: pd.DataFrame) -> pd.DataFrame:
     # Rolling volume-weighted standard deviation of typical price (20-period)
     window = 20
     tp_sq_vol = (typical_price ** 2) * df["volume"]
-    cum_tp_sq_vol = tp_sq_vol.cumsum()
+    tp_sq_vol.cumsum()
     # variance = E[X^2] - E[X]^2, weighted by volume
     rolling_cum_vol = df["volume"].rolling(window, min_periods=1).sum()
     rolling_tp_vol = (typical_price * df["volume"]).rolling(window, min_periods=1).sum()

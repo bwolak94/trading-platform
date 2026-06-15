@@ -179,7 +179,7 @@ export function FundingArbitragePanel({ onViewChart }: FundingArbitrageProps) {
                         {onViewChart && (
                           <button
                             type="button"
-                            onClick={() => handleViewChart(opp.symbol)}
+                            onClick={() => { handleViewChart(opp.symbol); }}
                             className="rounded border border-border px-1.5 py-0.5 text-[10px] text-gray-400 transition-colors hover:border-accent hover:text-white"
                             aria-label={`View ${opp.symbol} chart`}
                           >

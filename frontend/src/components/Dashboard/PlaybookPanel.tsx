@@ -166,7 +166,7 @@ export const PlaybookPanel: React.FC<Props> = ({ signalId, signal, currentPrice 
                 <input
                   type="checkbox"
                   checked={checkedItems.has(idx)}
-                  onChange={() => toggleCheck(idx)}
+                  onChange={() => { toggleCheck(idx); }}
                   className="mt-0.5 accent-blue-500"
                   aria-label={item}
                 />

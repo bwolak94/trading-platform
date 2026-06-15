@@ -151,7 +151,7 @@ export function SoundSettings() {
   const handleSave = useCallback(() => {
     savePreferences(prefs);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setTimeout(() => { setSaved(false); }, 2000);
   }, [prefs]);
 
   const handleTest = useCallback(
@@ -197,7 +197,7 @@ export function SoundSettings() {
           max={100}
           step={5}
           value={prefs.volume}
-          onChange={(e) => handleVolumeChange(Number(e.target.value))}
+          onChange={(e) => { handleVolumeChange(Number(e.target.value)); }}
           className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-accent"
           aria-label="Master volume control"
         />
@@ -221,7 +221,7 @@ export function SoundSettings() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => handleTest(category)}
+                onClick={() => { handleTest(category); }}
                 className="rounded border border-border px-2 py-0.5 text-[10px] font-medium text-gray-400 transition-colors hover:border-accent hover:text-white"
                 aria-label={`Test ${CATEGORY_LABELS[category]} sound`}
               >
@@ -231,7 +231,7 @@ export function SoundSettings() {
                 type="button"
                 role="switch"
                 aria-checked={prefs.enabled[category]}
-                onClick={() => toggleCategory(category)}
+                onClick={() => { toggleCategory(category); }}
                 className={`relative h-5 w-9 rounded-full transition-colors ${
                   prefs.enabled[category] ? "bg-accent" : "bg-border"
                 }`}

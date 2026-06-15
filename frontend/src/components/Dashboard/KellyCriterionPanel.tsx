@@ -108,7 +108,7 @@ export function KellyCriterionPanel() {
           id="kelly-capital"
           type="number"
           value={capital}
-          onChange={(e) => setCapital(Math.max(1, Number(e.target.value)))}
+          onChange={(e) => { setCapital(Math.max(1, Number(e.target.value))); }}
           className="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
           min={1}
           step={1000}

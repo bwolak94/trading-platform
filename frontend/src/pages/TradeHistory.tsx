@@ -168,7 +168,7 @@ export function TradeHistoryPage() {
           <select
             id="filter-symbol"
             value={filterSymbol}
-            onChange={(e) => setFilterSymbol(e.target.value)}
+            onChange={(e) => { setFilterSymbol(e.target.value); }}
             className="rounded border border-border bg-surface px-2 py-1 text-sm text-white"
             aria-label="Filter by symbol"
           >
@@ -187,7 +187,7 @@ export function TradeHistoryPage() {
           <select
             id="filter-strategy"
             value={filterStrategy}
-            onChange={(e) => setFilterStrategy(e.target.value)}
+            onChange={(e) => { setFilterStrategy(e.target.value); }}
             className="rounded border border-border bg-surface px-2 py-1 text-sm text-white"
             aria-label="Filter by strategy"
           >
@@ -206,7 +206,7 @@ export function TradeHistoryPage() {
           <select
             id="filter-result"
             value={filterResult}
-            onChange={(e) => setFilterResult(e.target.value as FilterResult)}
+            onChange={(e) => { setFilterResult(e.target.value as FilterResult); }}
             className="rounded border border-border bg-surface px-2 py-1 text-sm text-white"
             aria-label="Filter by result"
           >

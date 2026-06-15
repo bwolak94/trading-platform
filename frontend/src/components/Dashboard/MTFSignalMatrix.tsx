@@ -92,10 +92,10 @@ function SignalCell({
       <button
         type="button"
         onClick={handleClick}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-        onFocus={() => setShowTooltip(true)}
-        onBlur={() => setShowTooltip(false)}
+        onMouseEnter={() => { setShowTooltip(true); }}
+        onMouseLeave={() => { setShowTooltip(false); }}
+        onFocus={() => { setShowTooltip(true); }}
+        onBlur={() => { setShowTooltip(false); }}
         className={`flex h-12 w-full flex-col items-center justify-center gap-0.5 rounded border text-xs font-medium transition-colors ${bgColor} ${textColor}`}
         aria-label={`${asset} ${timeframe}: ${cell.direction} signal with ${cell.confidence}% confidence`}
       >

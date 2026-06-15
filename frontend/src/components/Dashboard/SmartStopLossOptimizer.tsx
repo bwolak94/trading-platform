@@ -70,7 +70,7 @@ export function SmartStopLossOptimizer() {
           <input
             type="text"
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            onChange={(e) => { setSymbol(e.target.value.toUpperCase()); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Symbol"
           />
@@ -79,7 +79,7 @@ export function SmartStopLossOptimizer() {
           <label className="mb-0.5 block text-[10px] text-gray-500">Timeframe</label>
           <select
             value={timeframe}
-            onChange={(e) => setTimeframe(e.target.value)}
+            onChange={(e) => { setTimeframe(e.target.value); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300 focus:outline-none"
             aria-label="Timeframe"
           >
@@ -91,7 +91,7 @@ export function SmartStopLossOptimizer() {
           <input
             type="number"
             value={maxDD}
-            onChange={(e) => setMaxDD(e.target.value)}
+            onChange={(e) => { setMaxDD(e.target.value); }}
             min={1}
             max={50}
             step={0.5}

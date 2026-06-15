@@ -186,7 +186,7 @@ export function MarketMicrostructureScore() {
         <h2 className="text-sm font-semibold text-white">Market Microstructure</h2>
         <select
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
+          onChange={(e) => { setSymbol(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
           aria-label="Select asset for microstructure score"
         >

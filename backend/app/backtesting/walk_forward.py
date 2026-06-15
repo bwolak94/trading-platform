@@ -236,7 +236,7 @@ class WalkForwardBacktester:
 
         for i in range(min_lookback, len(test_data)):
             window = test_data.iloc[: i + 1]
-            last = window.iloc[-1]
+            window.iloc[-1]
 
             regime = classifier.predict_df(window)
             context = MarketContext(

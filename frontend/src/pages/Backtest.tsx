@@ -101,43 +101,43 @@ export function BacktestPage() {
           label="Strategy"
           value={form.strategy}
           options={STRATEGIES}
-          onChange={(v) => updateField("strategy", v)}
+          onChange={(v) => { updateField("strategy", v); }}
         />
         <SelectField
           label="Asset"
           value={form.asset}
           options={ASSETS.map((a) => ({ value: a, label: a }))}
-          onChange={(v) => updateField("asset", v)}
+          onChange={(v) => { updateField("asset", v); }}
         />
         <SelectField
           label="Timeframe"
           value={form.timeframe}
           options={TIMEFRAMES.map((t) => ({ value: t, label: t }))}
-          onChange={(v) => updateField("timeframe", v)}
+          onChange={(v) => { updateField("timeframe", v); }}
         />
         <InputField
           label="Capital ($)"
           type="number"
           value={form.initial_capital}
-          onChange={(v) => updateField("initial_capital", Number(v))}
+          onChange={(v) => { updateField("initial_capital", Number(v)); }}
         />
         <InputField
           label="From"
           type="date"
           value={form.from_date}
-          onChange={(v) => updateField("from_date", v)}
+          onChange={(v) => { updateField("from_date", v); }}
         />
         <InputField
           label="To"
           type="date"
           value={form.to_date}
-          onChange={(v) => updateField("to_date", v)}
+          onChange={(v) => { updateField("to_date", v); }}
         />
         <InputField
           label="Risk %"
           type="number"
           value={form.risk_per_trade_pct}
-          onChange={(v) => updateField("risk_per_trade_pct", Number(v))}
+          onChange={(v) => { updateField("risk_per_trade_pct", Number(v)); }}
         />
         <div className="flex items-end">
           <button
@@ -194,7 +194,7 @@ export function BacktestPage() {
               {(resultsQuery.data ?? []).map((r: BacktestResult) => (
                 <tr
                   key={r.id}
-                  onClick={() => setSelectedResult(r)}
+                  onClick={() => { setSelectedResult(r); }}
                   className="cursor-pointer border-b border-border hover:bg-background"
                 >
                   <td className="px-4 py-2 text-white">{r.strategy_name}</td>
@@ -259,7 +259,7 @@ export function BacktestPage() {
           </ResponsiveContainer>
           <div className="mt-3 text-right">
             <button
-              onClick={() => exportCSV(selectedResult)}
+              onClick={() => { exportCSV(selectedResult); }}
               type="button"
               className="rounded border border-border px-3 py-1 text-xs text-gray-400 hover:bg-background"
               aria-label="Export results as CSV"
@@ -291,7 +291,7 @@ function SelectField({
       <label className="mb-1 block text-xs text-gray-500">{label}</label>
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); }}
         className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
         aria-label={label}
       >
@@ -322,7 +322,7 @@ function InputField({
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); }}
         className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
         aria-label={label}
       />

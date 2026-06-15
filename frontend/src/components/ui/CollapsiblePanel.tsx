@@ -44,7 +44,7 @@ export function CollapsiblePanel({
     <div className={`rounded-lg border border-border bg-surface ${className}`}>
       <button
         type="button"
-        onClick={() => setCollapsed((c) => !c)}
+        onClick={() => { setCollapsed((c) => !c); }}
         className="flex w-full items-center justify-between px-4 py-3 text-left"
         aria-expanded={!collapsed}
         aria-controls={`panel-body-${panelId}`}

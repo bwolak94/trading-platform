@@ -36,8 +36,8 @@ export function SessionClock() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { setNow(new Date()); }, 1000);
+    return () => { clearInterval(interval); };
   }, []);
 
   const utcHour = now.getUTCHours();

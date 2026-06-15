@@ -48,7 +48,7 @@ export function ParameterSensitivityHeatmap() {
     queryKey: ["param-sensitivity", symbol],
     queryFn: () => fetchSensitivity(symbol, "ema_fast", "ema_slow"),
     staleTime: 10 * 60 * 1000,
-    enabled: !!symbol,
+    enabled: Boolean(symbol),
   });
 
   const { minSharpe, maxSharpe, cellMap } = useMemo(() => {
@@ -71,7 +71,7 @@ export function ParameterSensitivityHeatmap() {
         </div>
         <select
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
+          onChange={(e) => { setSymbol(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300"
           aria-label="Select asset"
         >

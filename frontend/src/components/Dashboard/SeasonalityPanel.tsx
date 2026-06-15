@@ -222,7 +222,7 @@ export default function SeasonalityPanel() {
         <div className="flex items-center gap-2">
           <select
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
+            onChange={(e) => { setSymbol(e.target.value); }}
             className="rounded border border-border bg-gray-800 px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
             aria-label="Select symbol"
           >
@@ -285,7 +285,7 @@ export default function SeasonalityPanel() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => { setActiveTab(tab); }}
                 className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
                   activeTab === tab
                     ? "bg-gray-700 text-white"

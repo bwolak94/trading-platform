@@ -4,13 +4,13 @@ import type { MacroData } from "../../api/client";
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
-function formatChange(value: number | null, suffix: string = "%"): string {
+function formatChange(value: number | null, suffix = "%"): string {
   if (value === null) return "—";
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}${suffix}`;
 }
 
-function changeBadgeClass(value: number | null, invert: boolean = false): string {
+function changeBadgeClass(value: number | null, invert = false): string {
   if (value === null) return "text-gray-400";
   const positive = value > 0;
   const isGreen = invert ? !positive : positive;

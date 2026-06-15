@@ -8,7 +8,7 @@ to each historical trade to produce realistic return estimates.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Query

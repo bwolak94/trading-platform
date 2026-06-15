@@ -308,8 +308,7 @@ function MarketDataPanel({ data }: { data: Record<string, unknown> }) {
             <span className="text-green-400">Bullish: {fvg.bullish_gaps}</span>
             <span className="text-red-400">Bearish: {fvg.bearish_gaps}</span>
           </div>
-          {fvg.nearest &&
-            fvg.nearest.map((f, i) => (
+          {fvg.nearest?.map((f, i) => (
               <div key={`fvg-${i}`} className="flex justify-between text-xs mt-1">
                 <span className={f.type === "bullish" ? "text-green-400" : "text-red-400"}>
                   {f.type.toUpperCase()}
@@ -453,7 +452,7 @@ export function ProAnalysisPage() {
           <h2 className="text-lg font-bold text-white">Pro Analysis</h2>
           <select
             value={asset}
-            onChange={(e) => setAsset(e.target.value)}
+            onChange={(e) => { setAsset(e.target.value); }}
             className="rounded bg-gray-800 border border-gray-600 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
             aria-label="Select trading pair"
           >
@@ -465,7 +464,7 @@ export function ProAnalysisPage() {
           </select>
           <select
             value={timeframe}
-            onChange={(e) => setTimeframe(e.target.value)}
+            onChange={(e) => { setTimeframe(e.target.value); }}
             className="rounded bg-gray-800 border border-gray-600 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
             aria-label="Select timeframe"
           >
@@ -482,7 +481,7 @@ export function ProAnalysisPage() {
           {QUICK_PROMPTS.map((prompt) => (
             <button
               key={prompt}
-              onClick={() => handleQuickPrompt(prompt)}
+              onClick={() => { handleQuickPrompt(prompt); }}
               disabled={loading}
               className="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700 hover:text-white disabled:opacity-50"
               aria-label={`Quick prompt: ${prompt}`}
@@ -609,7 +608,7 @@ export function ProAnalysisPage() {
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => { setInput(e.target.value); }}
               onKeyDown={handleKeyDown}
               placeholder={`Ask about ${asset}... (Shift+Enter for new line)`}
               disabled={loading}

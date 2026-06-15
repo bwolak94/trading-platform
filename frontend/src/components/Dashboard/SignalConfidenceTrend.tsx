@@ -98,7 +98,7 @@ export function SignalConfidenceTrend() {
         <h2 className="text-sm font-semibold text-white">Signal Confidence Trend</h2>
         <select
           value={selectedAsset}
-          onChange={(e) => setSelectedAsset(e.target.value)}
+          onChange={(e) => { setSelectedAsset(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
           aria-label="Filter by asset"
         >

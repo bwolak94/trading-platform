@@ -14,7 +14,7 @@ const OUTCOME_CONFIG: Record<string, { label: string; cls: string }> = {
 };
 
 function OutcomeBadge({ outcome }: { outcome: string | null }) {
-  const config = OUTCOME_CONFIG[outcome ?? "PENDING"] ?? OUTCOME_CONFIG["PENDING"];
+  const config = OUTCOME_CONFIG[outcome ?? "PENDING"] ?? OUTCOME_CONFIG.PENDING;
   const label = config?.label ?? "PENDING";
   const cls = config?.cls ?? "bg-yellow-500/15 text-yellow-400";
   return (
@@ -44,7 +44,7 @@ function NotificationRow({ notif }: { notif: NotificationRecord }) {
   return (
     <div className="rounded-md border border-border/50 bg-surface/50">
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => { setExpanded((v) => !v); }}
         className="grid w-full grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 px-3 py-2 text-left text-sm"
         aria-expanded={expanded}
         aria-label={`Toggle details for ${notif.asset} signal`}
@@ -100,9 +100,9 @@ function PerformanceSummary() {
   if (!data) return null;
 
   const winPct = (data.win_rate * 100).toFixed(1);
-  const wins = data.breakdown["WIN"]?.count ?? 0;
-  const losses = data.breakdown["LOSS"]?.count ?? 0;
-  const pending = data.breakdown["PENDING"]?.count ?? 0;
+  const wins = data.breakdown.WIN?.count ?? 0;
+  const losses = data.breakdown.LOSS?.count ?? 0;
+  const pending = data.breakdown.PENDING?.count ?? 0;
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-surface/50 px-3 py-2 text-xs">
@@ -166,7 +166,7 @@ export function NotificationHistoryPanel() {
           </span>
           <div className="flex gap-2">
             <button
-              onClick={() => setPage((p) => p - 1)}
+              onClick={() => { setPage((p) => p - 1); }}
               disabled={!hasPrev}
               className="rounded px-2 py-1 hover:bg-surface disabled:opacity-40"
               aria-label="Previous page"
@@ -174,7 +174,7 @@ export function NotificationHistoryPanel() {
               ← Prev
             </button>
             <button
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => { setPage((p) => p + 1); }}
               disabled={!hasNext}
               className="rounded px-2 py-1 hover:bg-surface disabled:opacity-40"
               aria-label="Next page"

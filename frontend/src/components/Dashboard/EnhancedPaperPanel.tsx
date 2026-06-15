@@ -228,7 +228,7 @@ export default function EnhancedPaperPanel() {
           {!status?.is_running && (
             <button
               type="button"
-              onClick={() => startMutation.mutate()}
+              onClick={() => { startMutation.mutate(); }}
               disabled={startMutation.isPending}
               className="rounded border border-green-500/50 px-2 py-0.5 text-[10px] text-green-400 hover:bg-green-500/10"
             >
@@ -259,7 +259,7 @@ export default function EnhancedPaperPanel() {
           <button
             key={tab}
             type="button"
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setActiveTab(tab); }}
             className={`px-3 py-1.5 text-xs font-medium transition-colors ${
               activeTab === tab
                 ? "border-b-2 border-purple-400 text-purple-400"
@@ -300,7 +300,7 @@ export default function EnhancedPaperPanel() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => closeMutation.mutate(pos.id)}
+                  onClick={() => { closeMutation.mutate(pos.id); }}
                   disabled={closeMutation.isPending}
                   className="rounded border border-red-500/50 px-2 py-0.5 text-[10px] text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                 >
@@ -382,7 +382,7 @@ export default function EnhancedPaperPanel() {
               <input
                 type="text"
                 value={form.symbol}
-                onChange={(e) => handleChange("symbol", e.target.value.toUpperCase())}
+                onChange={(e) => { handleChange("symbol", e.target.value.toUpperCase()); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
               />
             </div>
@@ -393,7 +393,7 @@ export default function EnhancedPaperPanel() {
                   <button
                     key={d}
                     type="button"
-                    onClick={() => handleChange("direction", d)}
+                    onClick={() => { handleChange("direction", d); }}
                     className={`flex-1 rounded py-1.5 text-xs font-bold transition-colors border ${
                       form.direction === d
                         ? d === "LONG" ? "bg-green-500/20 text-green-400 border-green-500/50" : "bg-red-500/20 text-red-400 border-red-500/50"
@@ -413,7 +413,7 @@ export default function EnhancedPaperPanel() {
               <input
                 type="number"
                 value={form.entry_price}
-                onChange={(e) => handleChange("entry_price", e.target.value)}
+                onChange={(e) => { handleChange("entry_price", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 placeholder="e.g. 67500"
               />
@@ -423,7 +423,7 @@ export default function EnhancedPaperPanel() {
               <input
                 type="number"
                 value={form.stop_loss}
-                onChange={(e) => handleChange("stop_loss", e.target.value)}
+                onChange={(e) => { handleChange("stop_loss", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 placeholder="e.g. 65000"
               />
@@ -433,7 +433,7 @@ export default function EnhancedPaperPanel() {
               <input
                 type="number"
                 value={form.take_profit_1}
-                onChange={(e) => handleChange("take_profit_1", e.target.value)}
+                onChange={(e) => { handleChange("take_profit_1", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 placeholder="e.g. 70000"
               />
@@ -443,7 +443,7 @@ export default function EnhancedPaperPanel() {
               <input
                 type="number"
                 value={form.take_profit_2}
-                onChange={(e) => handleChange("take_profit_2", e.target.value)}
+                onChange={(e) => { handleChange("take_profit_2", e.target.value); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 placeholder="e.g. 73000"
               />
@@ -462,7 +462,7 @@ export default function EnhancedPaperPanel() {
                 max={50}
                 step={1}
                 value={form.leverage}
-                onChange={(e) => handleChange("leverage", parseInt(e.target.value))}
+                onChange={(e) => { handleChange("leverage", parseInt(e.target.value)); }}
                 className="w-full accent-purple-400"
               />
               <div className="flex justify-between text-[9px] text-gray-600 mt-0.5">
@@ -474,7 +474,7 @@ export default function EnhancedPaperPanel() {
               <input
                 type="number"
                 value={form.position_size_usdt}
-                onChange={(e) => handleChange("position_size_usdt", parseFloat(e.target.value))}
+                onChange={(e) => { handleChange("position_size_usdt", parseFloat(e.target.value)); }}
                 className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                 min={10}
               />
@@ -507,13 +507,13 @@ export default function EnhancedPaperPanel() {
 
           {openMutation.isError && (
             <p className="rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
-              {(openMutation.error as Error).message}
+              {(openMutation.error).message}
             </p>
           )}
 
           <button
             type="button"
-            onClick={() => openMutation.mutate(form)}
+            onClick={() => { openMutation.mutate(form); }}
             disabled={openMutation.isPending || !form.entry_price || !form.stop_loss || !form.take_profit_1}
             className={`w-full rounded py-2 text-sm font-bold transition-colors disabled:opacity-50 border ${
               form.direction === "LONG"

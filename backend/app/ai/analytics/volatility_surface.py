@@ -66,7 +66,7 @@ async def compute_volatility_surface(symbol: str) -> dict[str, Any]:
 
             highs = [float(c["high"]) for c in candles]
             lows = [float(c["low"]) for c in candles]
-            closes = [float(c["close"]) for c in candles]
+            [float(c["close"]) for c in candles]
 
             # Parkinson estimator
             parkinson_vol = compute_parkinson_vol(highs, lows)

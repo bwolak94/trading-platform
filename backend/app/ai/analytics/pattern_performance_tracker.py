@@ -1,7 +1,7 @@
 """Pattern Performance Tracker — tracks which patterns are working in current market."""
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 

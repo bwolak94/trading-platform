@@ -3,9 +3,8 @@ and learns from trade outcomes via a reward function."""
 
 import asyncio
 import logging
-import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,7 +15,7 @@ from app.ai.regime.classifier import RegimeClassifier
 from app.ai.strategies.base import MarketContext
 from app.ai.strategies.trend_following import TrendFollowingStrategy
 from app.ai.strategies.mean_reversion import MeanReversionStrategy
-from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks, find_fair_value_gaps
+from app.ai.strategies.smc_strategy import SMCStrategy, find_order_blocks
 from app.ai.strategies.rsi_scalping import RSIScalpingStrategy
 from app.ai.strategies.trend_trader import TrendTraderStrategy
 from app.ai.strategies.volume_breakout import VolumeBreakoutStrategy
@@ -325,7 +324,6 @@ class TradingAgent:
     async def _persist_signal(self, signal: "TradeSignal") -> None:
         """Persist a new trading signal to the database for chart overlay and history."""
         try:
-            from datetime import timezone
             from app.core.database import async_session
             from app.models.signal import Signal as SignalModel
 

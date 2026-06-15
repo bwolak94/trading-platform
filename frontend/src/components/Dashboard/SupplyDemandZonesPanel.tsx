@@ -173,7 +173,7 @@ export default function SupplyDemandZonesPanel() {
         <div className="flex items-center gap-2">
           <select
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
+            onChange={(e) => { setSymbol(e.target.value); }}
             className="rounded border border-border bg-gray-800 px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
             aria-label="Select symbol"
           >

@@ -65,7 +65,7 @@ export function NewsEventBacktesterPanel() {
         <div className="flex gap-1.5">
           <select
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
+            onChange={(e) => { setSymbol(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
             aria-label="Select asset"
           >
@@ -73,7 +73,7 @@ export function NewsEventBacktesterPanel() {
           </select>
           <select
             value={eventType}
-            onChange={(e) => setEventType(e.target.value)}
+            onChange={(e) => { setEventType(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
             aria-label="Select event type"
           >

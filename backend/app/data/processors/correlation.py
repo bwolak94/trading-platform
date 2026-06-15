@@ -1,7 +1,6 @@
 """Correlation matrix computation for multiple trading symbols."""
 
 import logging
-from datetime import datetime, timezone
 
 import httpx
 import pandas as pd

@@ -53,7 +53,7 @@ export function DarkPoolCumulativeFlowChart() {
         </div>
         <select
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
+          onChange={(e) => { setSymbol(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300"
           aria-label="Select asset for dark pool data"
         >

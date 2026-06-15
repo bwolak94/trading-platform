@@ -32,7 +32,7 @@ function extractBase(tradingPair: string): string {
 
 function resolveSector(base: string): string {
   for (const sector of SECTORS) {
-    if ((sector.symbols as readonly string[]).includes(base)) {
+    if ((sector.symbols).includes(base)) {
       return sector.name;
     }
   }

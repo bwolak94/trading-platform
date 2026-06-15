@@ -172,7 +172,7 @@ function InputField({ label, value, onChange, error, placeholder, suffix, id }: 
           min="0"
           step="any"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => { onChange(e.target.value); }}
           placeholder={placeholder}
           className={`w-full rounded border bg-background px-3 py-1.5 font-mono text-xs text-white placeholder-gray-600 outline-none transition-colors focus:ring-1 ${
             error
@@ -337,7 +337,7 @@ export function RiskCalculator() {
               max="125"
               step="1"
               value={inputs.leverage || "1"}
-              onChange={(e) => updateField("leverage")(e.target.value)}
+              onChange={(e) => { updateField("leverage")(e.target.value); }}
               className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-gray-700 accent-blue-500"
               aria-label="Leverage slider"
             />

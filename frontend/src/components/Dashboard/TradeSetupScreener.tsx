@@ -88,7 +88,7 @@ export function TradeSetupScreener() {
             <button
               key={d}
               type="button"
-              onClick={() => setDirection(d)}
+              onClick={() => { setDirection(d); }}
               className={`px-2 py-1 text-[10px] transition-colors ${
                 direction === d ? "bg-accent text-white" : "text-gray-500 hover:text-gray-300"
               }`}
@@ -99,7 +99,7 @@ export function TradeSetupScreener() {
         </div>
         <select
           value={topN}
-          onChange={(e) => setTopN(Number(e.target.value))}
+          onChange={(e) => { setTopN(Number(e.target.value)); }}
           className="rounded border border-border bg-background px-2 py-1 text-[10px] text-gray-300 focus:outline-none"
           aria-label="Number of setups"
         >

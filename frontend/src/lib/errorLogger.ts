@@ -11,7 +11,7 @@ interface FrontendErrorPayload {
   extra?: Record<string, unknown>;
 }
 
-let _queue: FrontendErrorPayload[] = [];
+const _queue: FrontendErrorPayload[] = [];
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function flushQueue() {

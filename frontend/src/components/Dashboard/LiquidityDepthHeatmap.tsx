@@ -66,7 +66,7 @@ export function LiquidityDepthHeatmap() {
     setIsLoading(true);
     void fetchBook();
     const interval = setInterval(() => void fetchBook(), 5_000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); };
   }, [fetchBook]);
 
   const bids = book.filter((l) => l.side === "bid").sort((a, b) => b.price - a.price);
@@ -90,7 +90,7 @@ export function LiquidityDepthHeatmap() {
           )}
           <select
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
+            onChange={(e) => { setSymbol(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
             aria-label="Select symbol"
           >

@@ -48,7 +48,7 @@ export function OrderBookDepth({ asset, limit = 100 }: OrderBookDepthProps) {
       const result = await fetchOrderBook(binanceSymbol, limit);
       setData(result);
       setError(null);
-    } catch (err) {
+    } catch {
       if (isInitial) setError("Failed to load order book");
     } finally {
       if (isInitial) setLoading(false);

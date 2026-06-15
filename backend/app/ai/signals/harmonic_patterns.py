@@ -1,6 +1,5 @@
 """Harmonic pattern detector (Gartley, Bat, Crab, Butterfly) using XABCD Fibonacci ratios."""
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass

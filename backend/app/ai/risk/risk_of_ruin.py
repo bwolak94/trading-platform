@@ -7,7 +7,6 @@ given current win rate, R-ratio, and position sizing.
 
 from __future__ import annotations
 
-import math
 import random
 from typing import Any
 

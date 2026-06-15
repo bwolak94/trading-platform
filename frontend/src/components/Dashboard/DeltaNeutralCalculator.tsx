@@ -91,7 +91,7 @@ function InputRow({ label, id, value, onChange, min = 0, step = 1, suffix, helpT
           min={min}
           step={step}
           value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          onChange={(e) => { onChange(parseFloat(e.target.value) || 0); }}
           className="w-full rounded border border-border bg-gray-800 px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
           aria-describedby={helpText ? `${id}-help` : undefined}
         />

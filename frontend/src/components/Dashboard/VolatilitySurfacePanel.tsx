@@ -110,7 +110,7 @@ export function VolatilitySurfacePanel() {
           <span className="text-[10px] text-gray-500">via Deribit</span>
           <select
             value={currency}
-            onChange={(e) => setCurrency(e.target.value as Currency)}
+            onChange={(e) => { setCurrency(e.target.value as Currency); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
             aria-label="Select currency"
           >

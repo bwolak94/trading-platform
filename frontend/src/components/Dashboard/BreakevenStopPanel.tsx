@@ -61,7 +61,7 @@ export function BreakevenStopPanel() {
         </div>
       )}
 
-      {!isLoading && !isError && data && data.length === 0 && (
+      {!isLoading && !isError && data?.length === 0 && (
         <div className="flex h-28 items-center justify-center text-xs text-gray-500">
           No positions at 1R+ yet
         </div>

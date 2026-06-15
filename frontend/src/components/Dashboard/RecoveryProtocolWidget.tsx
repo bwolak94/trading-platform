@@ -149,7 +149,7 @@ export default function RecoveryProtocolWidget() {
               max={100}
               step={0.5}
               value={drawdownPct}
-              onChange={(e) => setDrawdownPct(parseFloat(e.target.value) || 0)}
+              onChange={(e) => { setDrawdownPct(parseFloat(e.target.value) || 0); }}
               className="w-16 rounded border border-border bg-gray-800 px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
               aria-label="Current drawdown percentage"
             />
@@ -177,7 +177,7 @@ export default function RecoveryProtocolWidget() {
 
       {isLoading && <RecoverySkeleton />}
 
-      {data && data.stage && (
+      {data?.stage && (
         <div className="space-y-4">
           {/* Kill switch banner */}
           {isKillSwitch && (

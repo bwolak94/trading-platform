@@ -49,7 +49,7 @@ export function TimeStopPanel() {
           <select
             id="time-limit"
             value={limitHours}
-            onChange={(e) => setLimitHours(Number(e.target.value))}
+            onChange={(e) => { setLimitHours(Number(e.target.value)); }}
             className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-gray-300"
           >
             {[8, 12, 24, 48, 72].map((h) => (

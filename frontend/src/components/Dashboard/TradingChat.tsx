@@ -91,11 +91,11 @@ export function TradingChat({ onAnnotations }: TradingChatProps) {
           <h2 className="text-sm font-semibold text-white">AI Trading Assistant</h2>
         </div>
         <div className="flex items-center gap-2">
-          <select value={asset} onChange={(e) => setAsset(e.target.value)}
+          <select value={asset} onChange={(e) => { setAsset(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-white" aria-label="Chat asset">
             {ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
-          <select value={tf} onChange={(e) => setTf(e.target.value)}
+          <select value={tf} onChange={(e) => { setTf(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-white" aria-label="Chat timeframe">
             {TIMEFRAMES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
           </select>
@@ -185,7 +185,7 @@ export function TradingChat({ onAnnotations }: TradingChatProps) {
           <input
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { setInput(e.target.value); }}
             placeholder={`Ask about ${asset}...`}
             className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-accent focus:outline-none"
             disabled={loading}

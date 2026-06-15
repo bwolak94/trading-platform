@@ -12,7 +12,7 @@ Each rule has a cooldown period to prevent notification spam.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from app.core.logging import get_logger

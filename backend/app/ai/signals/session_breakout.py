@@ -16,10 +16,9 @@ Trading logic:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Final
 
-import numpy as np
 import pandas as pd
 
 from app.core.logging import get_logger

@@ -1,6 +1,6 @@
 """Signal Invalidation Reporter — lists what could go wrong with a signal."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import numpy as np

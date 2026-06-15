@@ -380,7 +380,7 @@ export function AIBotTab() {
           {isRunning ? (
             <button
               type="button"
-              onClick={() => stopMut.mutate()}
+              onClick={() => { stopMut.mutate(); }}
               disabled={stopMut.isPending}
               className="rounded border border-bearish/50 bg-bearish/10 px-4 py-1.5 text-xs font-medium text-bearish transition-colors hover:bg-bearish/20 disabled:opacity-50"
               aria-label="Stop bot"
@@ -390,7 +390,7 @@ export function AIBotTab() {
           ) : (
             <button
               type="button"
-              onClick={() => startMut.mutate()}
+              onClick={() => { startMut.mutate(); }}
               disabled={startMut.isPending}
               className="rounded border border-bullish/50 bg-bullish/10 px-4 py-1.5 text-xs font-medium text-bullish transition-colors hover:bg-bullish/20 disabled:opacity-50"
               aria-label="Start bot"
@@ -448,7 +448,7 @@ export function AIBotTab() {
             type="button"
             role="tab"
             aria-selected={subTab === t.id}
-            onClick={() => setSubTab(t.id)}
+            onClick={() => { setSubTab(t.id); }}
             className={`min-h-[36px] shrink-0 rounded px-4 py-1.5 text-xs font-medium transition-colors ${
               subTab === t.id
                 ? "bg-accent/20 text-white"
@@ -555,7 +555,7 @@ export function AIBotTab() {
                   <button
                     key={f}
                     type="button"
-                    onClick={() => setPosFilter(f)}
+                    onClick={() => { setPosFilter(f); }}
                     className={`rounded px-2.5 py-1 text-[10px] font-medium transition-colors ${
                       posFilter === f
                         ? f === "LONG" ? "bg-bullish/20 text-bullish" : f === "SHORT" ? "bg-bearish/20 text-bearish" : "bg-white/10 text-white"
@@ -569,7 +569,7 @@ export function AIBotTab() {
               {/* Sort */}
               <select
                 value={posSortKey}
-                onChange={(e) => setPosSortKey(e.target.value as typeof posSortKey)}
+                onChange={(e) => { setPosSortKey(e.target.value as typeof posSortKey); }}
                 className="rounded border border-border/50 bg-surface px-2 py-1 text-[10px] text-muted-foreground focus:outline-none"
                 aria-label="Sort positions"
               >

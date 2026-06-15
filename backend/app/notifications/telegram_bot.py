@@ -1,6 +1,5 @@
 """Telegram Bot — signal notifications and user commands."""
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -677,7 +676,7 @@ class TelegramNotifier:
         """
         from datetime import timedelta
 
-        from sqlalchemy import func, select
+        from sqlalchemy import select
 
         from app.core.database import async_session
         from app.models.notification_history import NotificationHistory

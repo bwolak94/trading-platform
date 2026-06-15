@@ -9,10 +9,9 @@ Zone freshness (not yet retested) is the highest-probability setup:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Final
 
-import numpy as np
 import pandas as pd
 
 from app.core.logging import get_logger
@@ -168,7 +167,7 @@ class SupplyDemandScanner:
                     continue
 
                 move_close = float(df["close"].iloc[move_idx])
-                move_open = float(df["open"].iloc[move_idx])
+                float(df["open"].iloc[move_idx])
 
                 # Demand: explosive UP move departing from base
                 up_move_pct = (move_close - base_high) / base_high * 100.0

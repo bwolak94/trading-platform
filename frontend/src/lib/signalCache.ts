@@ -27,8 +27,8 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => { resolve(request.result); };
+    request.onerror = () => { reject(request.error); };
   });
 }
 
@@ -62,8 +62,8 @@ export async function cacheSignals(signals: Signal[]): Promise<void> {
     };
 
     await new Promise<void>((res, rej) => {
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
+      tx.oncomplete = () => { res(); };
+      tx.onerror = () => { rej(tx.error); };
     });
     db.close();
   } catch (err) {
@@ -92,7 +92,7 @@ export async function loadCachedSignals(): Promise<Signal[]> {
           resolve(results);
         }
       };
-      request.onerror = () => reject(request.error);
+      request.onerror = () => { reject(request.error); };
     });
 
     db.close();
@@ -110,8 +110,8 @@ export async function clearSignalCache(): Promise<void> {
     const tx = db.transaction(STORE_NAME, "readwrite");
     tx.objectStore(STORE_NAME).clear();
     await new Promise<void>((res, rej) => {
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
+      tx.oncomplete = () => { res(); };
+      tx.onerror = () => { rej(tx.error); };
     });
     db.close();
   } catch (err) {

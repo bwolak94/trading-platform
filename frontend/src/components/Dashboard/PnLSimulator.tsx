@@ -108,31 +108,31 @@ export function PnLSimulator() {
         <InputField
           label="Entry Price"
           value={inputs.entryPrice}
-          onChange={(v) => updateField("entryPrice", v)}
+          onChange={(v) => { updateField("entryPrice", v); }}
           placeholder="e.g. 65000"
         />
         <InputField
           label="Stop Loss"
           value={inputs.stopLoss}
-          onChange={(v) => updateField("stopLoss", v)}
+          onChange={(v) => { updateField("stopLoss", v); }}
           placeholder="e.g. 63500"
         />
         <InputField
           label="Take Profit"
           value={inputs.takeProfit}
-          onChange={(v) => updateField("takeProfit", v)}
+          onChange={(v) => { updateField("takeProfit", v); }}
           placeholder="e.g. 68000"
         />
         <InputField
           label="Position Size (USD)"
           value={inputs.positionSize}
-          onChange={(v) => updateField("positionSize", v)}
+          onChange={(v) => { updateField("positionSize", v); }}
           placeholder="e.g. 1000"
         />
         <InputField
           label="Leverage"
           value={inputs.leverage}
-          onChange={(v) => updateField("leverage", v)}
+          onChange={(v) => { updateField("leverage", v); }}
           placeholder="e.g. 10"
         />
       </div>
@@ -225,7 +225,7 @@ function InputField({ label, value, onChange, placeholder }: InputFieldProps) {
         step="any"
         min="0"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { onChange(e.target.value); }}
         placeholder={placeholder}
         className="w-full rounded border border-border bg-background px-2.5 py-1.5 text-sm font-mono text-white placeholder-gray-600 focus:border-accent focus:outline-none"
         aria-label={label}

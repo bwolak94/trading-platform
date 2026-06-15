@@ -132,7 +132,7 @@ export function WatchlistPanel() {
 
     void check();
     const interval = setInterval(() => void check(), 15_000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); };
   }, [entries]);
 
   const handleAdd = () => {
@@ -171,7 +171,7 @@ export function WatchlistPanel() {
           </select>
           <input
             value={customSymbol}
-            onChange={(e) => setCustomSymbol(e.target.value.toUpperCase())}
+            onChange={(e) => { setCustomSymbol(e.target.value.toUpperCase()); }}
             placeholder="or type: LINKUSDT"
             className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Custom symbol"
@@ -180,7 +180,7 @@ export function WatchlistPanel() {
         <div className="flex gap-2">
           <select
             value={direction}
-            onChange={(e) => setDirection(e.target.value as "above" | "below")}
+            onChange={(e) => { setDirection(e.target.value as "above" | "below"); }}
             className="rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Alert direction"
           >
@@ -189,7 +189,7 @@ export function WatchlistPanel() {
           </select>
           <input
             value={targetPrice}
-            onChange={(e) => setTargetPrice(e.target.value)}
+            onChange={(e) => { setTargetPrice(e.target.value); }}
             placeholder="Target price $"
             type="number"
             className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent"
@@ -239,7 +239,7 @@ export function WatchlistPanel() {
                 )}
                 <button
                   type="button"
-                  onClick={() => dispatch({ type: "remove", id: entry.id })}
+                  onClick={() => { dispatch({ type: "remove", id: entry.id }); }}
                   className="rounded p-1 text-gray-600 hover:text-bearish transition-colors"
                   aria-label={`Remove ${entry.symbol} alert`}
                 >

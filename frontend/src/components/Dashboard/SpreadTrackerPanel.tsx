@@ -50,7 +50,7 @@ async function fetchAllSpreads(): Promise<SpreadSeries[]> {
     const a = priceMap[num] ?? [];
     const b = priceMap[den] ?? [];
     const n = Math.min(a.length, b.length);
-    const ratios = Array.from({ length: n }, (_, i) => (b[i] && b[i]! > 0 ? (a[i]! / b[i]!) : 0));
+    const ratios = Array.from({ length: n }, (_, i) => (b[i] && b[i] > 0 ? (a[i]! / b[i]) : 0));
     const values = ratios.map((r, i) => ({ i, ratio: parseFloat(r.toFixed(4)) }));
     const { mean, upper, lower } = bollingerBands(ratios);
     const current = ratios[ratios.length - 1] ?? 0;

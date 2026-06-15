@@ -1,6 +1,6 @@
 """Overnight Gap Scanner — assesses risk of holding through session closes."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
 import numpy as np
@@ -178,7 +178,7 @@ class OvernightGapScanner:
         hour = now.hour + now.minute / 60.0 + now.second / 3600.0
 
         # Determine next Monday 00:00 UTC (start of week)
-        days_to_monday = (7 - weekday) % 7  # 0 if today is Monday
+        (7 - weekday) % 7  # 0 if today is Monday
 
         if weekday == 4 and hour >= self.WEEKEND_START_HOUR:
             # Friday after 21:00 — weekend has started

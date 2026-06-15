@@ -125,7 +125,6 @@ async def receive_tradingview_pine_alert(
         {"signal_id": str, "status": "created"}  on success
         {"status": "skipped", "reason": str}      when action is "close" or unrecognised
     """
-    from datetime import datetime, timezone
 
     from app.models.signal import Signal
 

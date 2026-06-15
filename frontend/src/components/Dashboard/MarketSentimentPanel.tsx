@@ -45,8 +45,8 @@ function SessionIndicator() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
+    const id = setInterval(() => { setNow(new Date()); }, 30_000);
+    return () => { clearInterval(id); };
   }, []);
 
   const utcHour = now.getUTCHours();

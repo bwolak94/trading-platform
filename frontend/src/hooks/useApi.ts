@@ -44,7 +44,7 @@ export function useRegimes(): UseQueryResult<LiveRegime[]> {
 export function useIndicators(
   asset: string,
   timeframe: string,
-  count: number = 300,
+  count = 300,
 ): UseQueryResult<IndicatorData> {
   return useQuery({
     queryKey: ["indicators", asset, timeframe, count],
@@ -58,7 +58,7 @@ export function useIndicators(
 export function useKlines(
   asset: string,
   timeframe: string,
-  count: number = 300,
+  count = 300,
 ): UseQueryResult<KlineData[]> {
   return useQuery({
     queryKey: ["klines", asset, timeframe, count],

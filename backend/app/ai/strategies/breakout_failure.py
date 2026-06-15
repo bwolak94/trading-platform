@@ -1,6 +1,5 @@
 """Bull/Bear Trap — false breakout reversal strategy."""
 
-import numpy as np
 import pandas as pd
 
 from app.ai.strategies.base import (

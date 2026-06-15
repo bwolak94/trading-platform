@@ -84,7 +84,7 @@ export const ScannerPanel: React.FC = () => {
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, REFRESH_INTERVAL);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); };
   }, [fetchData]);
 
   return (

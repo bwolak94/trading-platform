@@ -88,7 +88,7 @@ export function AssetSearchSelect({
       }
     }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    return () => { document.removeEventListener("mousedown", handleClick); };
   }, [open]);
 
   // Focus input when opened
@@ -101,7 +101,7 @@ export function AssetSearchSelect({
       {/* Trigger */}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); }}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
@@ -132,7 +132,7 @@ export function AssetSearchSelect({
               id={inputId}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); }}
               placeholder="Search symbol…"
               className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               aria-controls={listId}
@@ -171,7 +171,7 @@ export function AssetSearchSelect({
                   key={opt.value}
                   role="option"
                   aria-selected={opt.value === value}
-                  onClick={() => handleSelect(opt)}
+                  onClick={() => { handleSelect(opt); }}
                   className={`flex cursor-pointer items-center justify-between px-3 py-2 text-sm transition-colors hover:bg-surface ${
                     opt.value === value ? "bg-accent/20 text-accent" : "text-foreground"
                   }`}

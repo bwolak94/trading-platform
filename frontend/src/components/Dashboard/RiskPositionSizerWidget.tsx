@@ -89,7 +89,7 @@ export function RiskPositionSizerWidget() {
             <input
               type="number"
               value={value}
-              onChange={(e) => set(e.target.value)}
+              onChange={(e) => { set(e.target.value); }}
               className={inputCls}
               aria-label={label}
             />

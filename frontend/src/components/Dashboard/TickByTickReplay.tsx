@@ -54,7 +54,7 @@ export function TickByTickReplay() {
       const data = await fetchCandles(symbol, 200);
       setAllCandles(data);
       setCursor(1);
-    } catch (e) {
+    } catch {
       setError("Failed to load candle data");
     } finally {
       setLoading(false);
@@ -91,7 +91,7 @@ export function TickByTickReplay() {
         <h3 className="text-sm font-semibold text-gray-200">Tick-by-Tick Replay</h3>
         <select
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
+          onChange={(e) => { setSymbol(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-0.5 text-xs text-gray-300"
           aria-label="Select asset for replay"
         >
@@ -103,14 +103,14 @@ export function TickByTickReplay() {
         <div className="flex items-center gap-1 ml-auto">
           <button
             type="button"
-            onClick={() => setCursor((c) => Math.max(1, c - 1))}
+            onClick={() => { setCursor((c) => Math.max(1, c - 1)); }}
             disabled={cursor <= 1}
             className="rounded border border-border px-2 py-0.5 text-xs text-gray-400 hover:text-white disabled:opacity-40"
             aria-label="Previous candle"
           >◀</button>
           <button
             type="button"
-            onClick={() => setPlaying((p) => !p)}
+            onClick={() => { setPlaying((p) => !p); }}
             className="rounded border border-accent bg-accent/10 px-3 py-0.5 text-xs font-semibold text-accent hover:bg-accent/20"
             aria-label={playing ? "Pause replay" : "Play replay"}
           >
@@ -118,14 +118,14 @@ export function TickByTickReplay() {
           </button>
           <button
             type="button"
-            onClick={() => setCursor((c) => Math.min(allCandles.length, c + 1))}
+            onClick={() => { setCursor((c) => Math.min(allCandles.length, c + 1)); }}
             disabled={cursor >= allCandles.length}
             className="rounded border border-border px-2 py-0.5 text-xs text-gray-400 hover:text-white disabled:opacity-40"
             aria-label="Next candle"
           >▶</button>
           <select
             value={speed}
-            onChange={(e) => setSpeed(Number(e.target.value) as 500 | 200 | 50)}
+            onChange={(e) => { setSpeed(Number(e.target.value) as 500 | 200 | 50); }}
             className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-gray-300"
             aria-label="Replay speed"
           >

@@ -30,8 +30,8 @@ def monte_carlo_var(
         return {"error": "Insufficient trade history"}
 
     arr = np.array(trade_returns)
-    mean_return = float(np.mean(arr))
-    std_return = float(np.std(arr))
+    float(np.mean(arr))
+    float(np.std(arr))
 
     # Bootstrap sampling (preserves fat tails)
     rng = np.random.default_rng(42)

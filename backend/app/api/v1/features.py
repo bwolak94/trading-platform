@@ -293,7 +293,7 @@ async def get_anchored_vwap(
         close = df["close"].astype(float)
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        volume = df["volume"].astype(float)
+        df["volume"].astype(float)
 
         # Determine anchor point
         if anchor_type == "swing_low":
@@ -502,7 +502,7 @@ async def get_market_profile(
         close = df["close"].astype(float)
         high = df["high"].astype(float)
         low = df["low"].astype(float)
-        volume = df["volume"].astype(float)
+        df["volume"].astype(float)
 
         price_min = float(low.min())
         price_max = float(high.max())
@@ -557,7 +557,6 @@ async def get_market_profile(
 
         above_vah = current_price > vah
         below_val = current_price < val
-        in_value_area = val <= current_price <= vah
 
         return _ok({
             "symbol": symbol,
@@ -937,7 +936,7 @@ async def get_seasonality(
     Falls back to Binance price data when DB data is sparse.
     """
     try:
-        from sqlalchemy import select, text
+        from sqlalchemy import select
 
         from app.models.signal import Signal  # type: ignore
 
@@ -957,7 +956,6 @@ async def get_seasonality(
             import pandas as pd
             candles = await _fetch_ohlcv(symbol, "1d", lookback_days)
             df = pd.DataFrame(candles)
-            import time as _time
             df["date"] = pd.to_datetime(
                 [c["open_time"] / 1000 for c in candles], unit="s", utc=True
             )
@@ -1127,17 +1125,17 @@ async def get_recovery_protocol(
     elif drawdown_pct >= 15:
         allow_trade = strategy_name == "funding_mean_reversion"
         decision = "SEVERE_RESTRICTION" if allow_trade else "BLOCKED"
-        reason = f"Severe drawdown — only funding_mean_reversion allowed"
+        reason = "Severe drawdown — only funding_mean_reversion allowed"
         min_confidence = 80.0
     elif drawdown_pct >= 10:
         allow_trade = signal_confidence >= 75.0 and trades_today < 1
         decision = "HIGH_CONF_ONLY" if allow_trade else "BLOCKED"
-        reason = f"Moderate drawdown — high confidence signals only (>75%)"
+        reason = "Moderate drawdown — high confidence signals only (>75%)"
         min_confidence = 75.0
     elif drawdown_pct >= 5:
         allow_trade = signal_confidence >= 65.0 and trades_today < 2
         decision = "REDUCED_SIZING" if allow_trade else "DAILY_LIMIT"
-        reason = f"Minor drawdown — max 2 trades/day, confidence ≥65%"
+        reason = "Minor drawdown — max 2 trades/day, confidence ≥65%"
         min_confidence = 65.0
     else:
         allow_trade = True

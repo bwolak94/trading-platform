@@ -6,7 +6,6 @@ allowing traders to focus on high-edge setups and avoid low-edge ones.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from app.core.logging import get_logger

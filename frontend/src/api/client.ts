@@ -178,7 +178,7 @@ export interface IndicatorData {
 export async function fetchIndicators(
   asset: string,
   interval: string,
-  limit: number = 300,
+  limit = 300,
 ): Promise<IndicatorData> {
   const { data } = await api.get<IndicatorData>("/market/indicators", {
     params: { asset, interval, limit },
@@ -241,7 +241,7 @@ export interface KlineData {
 export async function fetchKlines(
   asset: string,
   interval: string,
-  limit: number = 300,
+  limit = 300,
 ): Promise<KlineData[]> {
   const { data } = await api.get<KlineData[]>("/market/klines", {
     params: { asset, interval, limit },
@@ -320,7 +320,7 @@ export async function runAnalysis(
   strategy?: string,
 ): Promise<AnalysisResult> {
   const params: Record<string, string> = { asset, timeframe };
-  if (strategy) params["strategy"] = strategy;
+  if (strategy) params.strategy = strategy;
   const { data } = await api.get<AnalysisResult>("/analyze/run", { params });
   return data;
 }
@@ -391,8 +391,8 @@ export interface OrderFlowData {
 
 export async function fetchOrderFlow(
   asset: string,
-  timeframe: string = "1m",
-  limit: number = 30,
+  timeframe = "1m",
+  limit = 30,
 ): Promise<OrderFlowData> {
   const { data } = await api.get<OrderFlowData>("/market/orderflow", {
     params: { asset, timeframe, limit },
@@ -441,7 +441,7 @@ export interface LiquidationHeatmapData {
 
 export async function fetchLiquidationHeatmap(
   asset: string,
-  rangePct: number = 5,
+  rangePct = 5,
 ): Promise<LiquidationHeatmapData> {
   const { data } = await api.get<LiquidationHeatmapData>(
     "/market/liquidation-heatmap",
@@ -452,7 +452,7 @@ export async function fetchLiquidationHeatmap(
 
 export async function fetchRecentLiquidations(
   asset: string,
-  limit: number = 50,
+  limit = 50,
 ): Promise<ForcedLiquidation[]> {
   const { data } = await api.get<ForcedLiquidation[]>(
     "/market/liquidations/recent",
@@ -618,7 +618,7 @@ export interface WhaleData {
   whale_alerts: Record<string, unknown>[];
 }
 
-export async function fetchNews(limit: number = 50): Promise<{ news: NewsItemData[] }> {
+export async function fetchNews(limit = 50): Promise<{ news: NewsItemData[] }> {
   const { data } = await api.get<{ news: NewsItemData[] }>("/intelligence/news", { params: { limit } });
   return data;
 }
@@ -680,9 +680,9 @@ export async function fetchCorrelations(
   lookback_days?: number,
 ): Promise<CorrelationData> {
   const params: Record<string, string | number> = {};
-  if (symbols) params["symbols"] = symbols;
-  if (timeframe) params["timeframe"] = timeframe;
-  if (lookback_days) params["lookback_days"] = lookback_days;
+  if (symbols) params.symbols = symbols;
+  if (timeframe) params.timeframe = timeframe;
+  if (lookback_days) params.lookback_days = lookback_days;
   const { data } = await api.get<CorrelationData>("/market/correlations", { params });
   return data;
 }
@@ -701,7 +701,7 @@ export async function fetchFundingRates(
   symbols?: string,
 ): Promise<FundingRateData[]> {
   const params: Record<string, string> = {};
-  if (symbols) params["symbols"] = symbols;
+  if (symbols) params.symbols = symbols;
   const { data } = await api.get<FundingRateData[]>("/market/funding-rates", { params });
   return data;
 }
@@ -756,7 +756,7 @@ export interface OrderBookData {
 
 export async function fetchOrderBook(
   symbol: string,
-  limit: number = 100,
+  limit = 100,
 ): Promise<OrderBookData> {
   const { data } = await api.get<OrderBookData>("/market/orderbook", {
     params: { symbol, limit },
@@ -906,7 +906,7 @@ export async function fetchSimulationPerformance(): Promise<SimulationPerformanc
   return data;
 }
 
-export async function fetchSessionHistory(limit: number = 10): Promise<{ sessions: BotSession[] }> {
+export async function fetchSessionHistory(limit = 10): Promise<{ sessions: BotSession[] }> {
   const { data } = await api.get("/simulation/performance/history", { params: { limit } });
   return data;
 }
@@ -1124,7 +1124,7 @@ export interface MomentumRankData {
   count: number;
 }
 
-export async function fetchMomentumRank(topN: number = 20): Promise<MomentumRankData> {
+export async function fetchMomentumRank(topN = 20): Promise<MomentumRankData> {
   const { data } = await api.get<MomentumRankData>("/market/momentum-rank", {
     params: { top_n: topN },
   });

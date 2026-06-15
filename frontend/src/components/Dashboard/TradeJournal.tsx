@@ -171,7 +171,7 @@ export function TradeJournal() {
         <h3 className="text-sm font-semibold text-white">Trade Journal</h3>
         <button
           type="button"
-          onClick={() => setIsFormOpen((o) => !o)}
+          onClick={() => { setIsFormOpen((o) => !o); }}
           className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500"
           aria-expanded={isFormOpen}
           aria-controls={`${formId}-form`}
@@ -420,7 +420,7 @@ export function TradeJournal() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => handleDelete(trade.id)}
+                      onClick={() => { handleDelete(trade.id); }}
                       className="mt-1 rounded px-1.5 py-0.5 text-[10px] text-gray-500 transition-colors hover:bg-red-900/30 hover:text-red-400"
                       aria-label={`Delete trade ${trade.asset} from ${trade.date}`}
                     >

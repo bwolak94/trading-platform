@@ -281,7 +281,7 @@ function SortableHeader({
     <th className={`px-3 py-2 font-medium ${className}`}>
       <button
         type="button"
-        onClick={() => onSort(field)}
+        onClick={() => { onSort(field); }}
         className="inline-flex items-center gap-0.5 transition-colors hover:text-white"
         aria-label={`Sort by ${label}`}
       >

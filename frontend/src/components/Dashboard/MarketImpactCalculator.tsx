@@ -99,7 +99,7 @@ export function MarketImpactCalculator() {
           <select
             id="impact-symbol"
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
+            onChange={(e) => { setSymbol(e.target.value); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300"
           >
             <option value="BTC/USDT">BTC/USDT</option>
@@ -112,7 +112,7 @@ export function MarketImpactCalculator() {
           <select
             id="impact-side"
             value={side}
-            onChange={(e) => setSide(e.target.value as "BUY" | "SELL")}
+            onChange={(e) => { setSide(e.target.value as "BUY" | "SELL"); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300"
           >
             <option value="BUY">BUY</option>
@@ -129,7 +129,7 @@ export function MarketImpactCalculator() {
             min="100"
             step="1000"
             value={orderUsd}
-            onChange={(e) => setOrderUsd(e.target.value)}
+            onChange={(e) => { setOrderUsd(e.target.value); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300"
             placeholder="10000"
           />

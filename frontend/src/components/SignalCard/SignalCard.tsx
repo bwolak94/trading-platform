@@ -36,7 +36,7 @@ function useSignalAgeMinutes(createdAt: string): number {
     const timer = setInterval(() => {
       setAgeMin(Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
     }, 60_000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); };
   }, [createdAt]);
   return ageMin;
 }
@@ -290,7 +290,7 @@ export const SignalCard = memo(function SignalCard({ signal, isNew, slippageBps 
     setSwipeHint(action);
     if (action === "watch") setWatched(true);
     if (action === "dismiss") setDismissed(true);
-    setTimeout(() => setSwipeHint(null), 800);
+    setTimeout(() => { setSwipeHint(null); }, 800);
   }, []);
 
   const { onTouchStart, onTouchEnd } = useSwipeGesture(handleSwipe);
@@ -512,7 +512,7 @@ function CopyButton({ signal }: { signal: Signal }) {
       ].filter(Boolean).join("\n");
       void navigator.clipboard.writeText(text).then(() => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => { setCopied(false); }, 2000);
       });
     },
     [signal],
@@ -560,7 +560,7 @@ function ExpiryCountdown({ expiresAt }: { expiresAt: string }) {
     };
     compute();
     const timer = setInterval(compute, 30000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); };
   }, [expiresAt]);
 
   const colorClass = {

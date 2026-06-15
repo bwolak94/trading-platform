@@ -30,13 +30,13 @@ def find_order_blocks(
     recent = df.iloc[-lookback:]
     close = recent["close"].values
     open_ = recent["open"].values
-    high = recent["high"].values
-    low = recent["low"].values
+    recent["high"].values
+    recent["low"].values
     atr = recent["atr_14"].values if "atr_14" in recent.columns else np.ones(len(recent))
 
     for i in range(1, len(recent) - 1):
         body = abs(close[i] - open_[i])
-        prev_body = abs(close[i - 1] - open_[i - 1])
+        abs(close[i - 1] - open_[i - 1])
         impulse_ratio = body / atr[i] if atr[i] > 0 else 0
 
         # Bullish OB: previous candle bearish, current candle strong bullish impulse
@@ -292,8 +292,8 @@ class SMCStrategy(BaseStrategy):
     ) -> SignalResult:
         """Build SignalResult with OB-based levels."""
         ob = check_result["ob"]
-        close = float(last.get("close", 0))
-        atr = float(last.get("atr_14", 0))
+        float(last.get("close", 0))
+        float(last.get("atr_14", 0))
 
         entry = ob["mid"]  # entry at middle of Order Block
 

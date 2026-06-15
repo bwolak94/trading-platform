@@ -1,0 +1,19 @@
+line-length = 120
+
+[lint]
+# Rules enabled by default; F = pyflakes, E = pycodestyle, W = warnings
+select = ["E", "F", "W"]
+ignore = [
+  # Line too long — finance/ML code often has long formulas; use Black for formatting
+  "E501",
+  # Ambiguous variable names (l, O, I) — common in math/finance code
+  "E741",
+  # Multiple statements on one line — common in compact data processing
+  "E701",
+  # Module-level import not at top — needed for conditional/deferred imports
+  "E402",
+]
+
+[lint.per-file-ignores]
+# F821 false positive: `context` is in-scope via caller but Ruff can't trace it
+"app/ai/strategies/breakout_failure.py" = ["F821"]

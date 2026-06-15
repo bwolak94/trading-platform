@@ -147,7 +147,7 @@ export function StressTestScenariosPanel() {
         </div>
         <button
           type="button"
-          onClick={() => mutation.mutate()}
+          onClick={() => { mutation.mutate(); }}
           disabled={mutation.isPending}
           className="flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Run stress test simulation"

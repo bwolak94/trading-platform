@@ -13,7 +13,6 @@ Environment variables:
 """
 
 import os
-from typing import Callable
 
 from app.core.logging import get_logger
 

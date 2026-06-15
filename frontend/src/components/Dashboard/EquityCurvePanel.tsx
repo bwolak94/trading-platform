@@ -18,7 +18,7 @@ function CustomTooltip({
   payload,
 }: {
   active?: boolean;
-  payload?: Array<{ payload: EquityPoint }>;
+  payload?: { payload: EquityPoint }[];
 }) {
   if (!active || !payload?.length) return null;
   const d = payload[0]!.payload;

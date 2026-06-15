@@ -151,7 +151,7 @@ export function SignalHistoryPanel() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() => { setPage((p) => Math.max(0, p - 1)); }}
               disabled={page === 0}
               className="rounded border border-border px-2 py-1 disabled:opacity-40 hover:text-foreground"
               aria-label="Previous page"
@@ -160,7 +160,7 @@ export function SignalHistoryPanel() {
             </button>
             <button
               type="button"
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              onClick={() => { setPage((p) => Math.min(totalPages - 1, p + 1)); }}
               disabled={page >= totalPages - 1}
               className="rounded border border-border px-2 py-1 disabled:opacity-40 hover:text-foreground"
               aria-label="Next page"

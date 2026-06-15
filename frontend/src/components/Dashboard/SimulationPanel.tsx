@@ -77,7 +77,7 @@ function PositionRow({
         <span className="font-semibold text-foreground">{pos.symbol}</span>
         <span className="ml-1 text-xs text-muted-foreground">{pos.strategy.replace(/_/g, " ")}</span>
       </div>
-      <DirectionBadge direction={pos.direction as "LONG" | "SHORT"} />
+      <DirectionBadge direction={pos.direction} />
       <span className="font-mono text-muted-foreground">{pos.entry_price.toFixed(4)}</span>
       <PnlBadge pnl={pos.pnl_pct} />
       <StatusBadge status={pos.status} />
@@ -122,7 +122,7 @@ function EngineControls() {
         {running ? "Running" : "Stopped"}
       </span>
       <button
-        onClick={() => (running ? stopMut.mutate() : startMut.mutate())}
+        onClick={() => { running ? stopMut.mutate() : startMut.mutate(); }}
         disabled={busy}
         className={`rounded-md px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
           running

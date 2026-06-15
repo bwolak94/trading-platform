@@ -117,15 +117,15 @@ export function StrategyABBacktester() {
         <div>
           <p className="mb-1.5 text-[10px] font-semibold text-accent">Variant A</p>
           <div className="space-y-1.5">
-            <div><label className="text-[9px] text-gray-500">ATR Mult</label><input type="number" value={multA} onChange={(e) => setMultA(e.target.value)} step={0.1} className={inputCls} /></div>
-            <div><label className="text-[9px] text-gray-500">R/R Ratio</label><input type="number" value={rrA} onChange={(e) => setRrA(e.target.value)} step={0.1} className={inputCls} /></div>
+            <div><label className="text-[9px] text-gray-500">ATR Mult</label><input type="number" value={multA} onChange={(e) => { setMultA(e.target.value); }} step={0.1} className={inputCls} /></div>
+            <div><label className="text-[9px] text-gray-500">R/R Ratio</label><input type="number" value={rrA} onChange={(e) => { setRrA(e.target.value); }} step={0.1} className={inputCls} /></div>
           </div>
         </div>
         <div>
           <p className="mb-1.5 text-[10px] font-semibold text-purple-400">Variant B</p>
           <div className="space-y-1.5">
-            <div><label className="text-[9px] text-gray-500">ATR Mult</label><input type="number" value={multB} onChange={(e) => setMultB(e.target.value)} step={0.1} className={inputCls} /></div>
-            <div><label className="text-[9px] text-gray-500">R/R Ratio</label><input type="number" value={rrB} onChange={(e) => setRrB(e.target.value)} step={0.1} className={inputCls} /></div>
+            <div><label className="text-[9px] text-gray-500">ATR Mult</label><input type="number" value={multB} onChange={(e) => { setMultB(e.target.value); }} step={0.1} className={inputCls} /></div>
+            <div><label className="text-[9px] text-gray-500">R/R Ratio</label><input type="number" value={rrB} onChange={(e) => { setRrB(e.target.value); }} step={0.1} className={inputCls} /></div>
           </div>
         </div>
       </div>
@@ -135,14 +135,14 @@ export function StrategyABBacktester() {
         <input
           type="text"
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+          onChange={(e) => { setSymbol(e.target.value.toUpperCase()); }}
           placeholder="BTCUSDT"
           className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
           aria-label="Symbol"
         />
         <select
           value={tf}
-          onChange={(e) => setTf(e.target.value)}
+          onChange={(e) => { setTf(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
           aria-label="Timeframe"
         >

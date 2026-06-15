@@ -168,7 +168,7 @@ class RSIScalpingStrategy(BaseStrategy):
 
         rsi = float(last.get("rsi_scalp", 50))
         stoch_k = float(last.get("stoch_k", 50))
-        stoch_d = float(last.get("stoch_d", 50))
+        float(last.get("stoch_d", 50))
         dmi_stoch = float(last.get("dmi_stoch", 50))
         cross_up = int(last.get("cross_up", 0))
         cross_down = int(last.get("cross_down", 0))

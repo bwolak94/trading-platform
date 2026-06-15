@@ -120,7 +120,7 @@ export function PositionJournalPanel() {
                     <button
                       key={tag}
                       type="button"
-                      onClick={() => dispatch({ type: "toggle", id: p.id, tag })}
+                      onClick={() => { dispatch({ type: "toggle", id: p.id, tag }); }}
                       className={`rounded border px-1.5 py-0.5 text-[9px] font-medium transition-opacity ${
                         myTags.includes(tag) ? TAG_COLOR[tag] : "border-border bg-background text-gray-600 hover:text-gray-400"
                       }`}

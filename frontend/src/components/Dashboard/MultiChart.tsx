@@ -104,7 +104,7 @@ export function MultiChart({ onAssetChange, defaultAsset, defaultTimeframe }: Mu
         <div className="flex items-center gap-1">
           <span className="text-xs text-gray-500 mr-2">Layout:</span>
           {LAYOUTS.map((l) => (
-            <button key={l.mode} type="button" onClick={() => setLayout(l.mode)}
+            <button key={l.mode} type="button" onClick={() => { setLayout(l.mode); }}
               className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
                 layout === l.mode ? "bg-accent text-white" : "bg-surface text-gray-400 hover:text-white border border-border"
               }`}

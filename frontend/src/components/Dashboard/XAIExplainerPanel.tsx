@@ -17,14 +17,14 @@ interface XAIReport {
   feature_importances: FeatureImportance[];
   top_3_drivers: string[];
   explanation: string;
-  chart_data: Array<{
+  chart_data: {
     feature: string;
     value: number;
     abs_value: number;
     color: string;
     label: string;
     importance_pct: number;
-  }>;
+  }[];
   signal_summary: {
     symbol: string;
     direction: string;
@@ -182,7 +182,7 @@ function ChainOfThought({ explanation }: ChainOfThoughtProps) {
   const handleCopy = useCallback(async () => {
     await copyToClipboard(explanation);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => { setCopied(false); }, 2000);
   }, [explanation]);
 
   return (

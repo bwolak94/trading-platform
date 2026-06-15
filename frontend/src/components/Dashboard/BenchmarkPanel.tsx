@@ -119,7 +119,7 @@ export function BenchmarkPanel() {
             <button
               key={value}
               type="button"
-              onClick={() => setLookback(value)}
+              onClick={() => { setLookback(value); }}
               className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
                 lookback === value
                   ? "bg-accent text-white"

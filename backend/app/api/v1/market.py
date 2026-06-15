@@ -245,7 +245,6 @@ async def get_indicators(
 
     Returns EMA, Bollinger Bands, Order Blocks, FVGs, liquidation estimates.
     """
-    import numpy as np
     from app.ai.strategies.smc_strategy import find_order_blocks, find_fair_value_gaps
     from app.data.processors.feature_engineer import compute_features
 

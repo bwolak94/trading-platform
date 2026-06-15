@@ -127,10 +127,10 @@ function MaeMfeTooltip() {
         type="button"
         aria-label="What are MAE and MFE?"
         className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-zinc-600 text-[9px] text-zinc-500 hover:border-zinc-400 hover:text-zinc-300"
-        onMouseEnter={() => setVisible(true)}
-        onMouseLeave={() => setVisible(false)}
-        onFocus={() => setVisible(true)}
-        onBlur={() => setVisible(false)}
+        onMouseEnter={() => { setVisible(true); }}
+        onMouseLeave={() => { setVisible(false); }}
+        onFocus={() => { setVisible(true); }}
+        onBlur={() => { setVisible(false); }}
       >
         ?
       </button>
@@ -177,7 +177,7 @@ function PreTradeChecklist() {
       <button
         id="checklist-heading"
         type="button"
-        onClick={() => setExpanded((p) => !p)}
+        onClick={() => { setExpanded((p) => !p); }}
         className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
         aria-expanded={expanded}
         aria-controls="checklist-body"
@@ -223,7 +223,7 @@ function PreTradeChecklist() {
               <input
                 type="checkbox"
                 checked={checked[item.id]}
-                onChange={() => toggle(item.id)}
+                onChange={() => { toggle(item.id); }}
                 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 accent-green-500"
                 aria-label={item.label}
               />
@@ -333,7 +333,7 @@ function TradeJournal({
               <button
                 key={qt}
                 type="button"
-                onClick={() => (active ? removeTag(qt) : addTag(qt))}
+                onClick={() => { active ? removeTag(qt) : addTag(qt); }}
                 className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition-opacity ${
                   active
                     ? (TAG_COLORS[qt] ?? DEFAULT_TAG_COLOR)
@@ -378,7 +378,7 @@ function TradeJournal({
             ref={tagInputRef}
             type="text"
             value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
+            onChange={(e) => { setTagInput(e.target.value); }}
             onKeyDown={handleTagInputKeyDown}
             onBlur={() => {
               if (tagInput.trim()) {
@@ -399,8 +399,8 @@ function TradeJournal({
         <textarea
           rows={4}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={(e) => saveNotes(e.target.value)}
+          onChange={(e) => { setNotes(e.target.value); }}
+          onBlur={(e) => { saveNotes(e.target.value); }}
           placeholder="Add trade notes, observations..."
           className="w-full resize-none rounded-md border border-border/50 bg-surface/30 px-3 py-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-accent/60 focus:ring-1 focus:ring-accent/30"
           aria-label="Trade notes"
@@ -546,7 +546,7 @@ export function PositionDetailDrawer({
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => { document.removeEventListener("keydown", handleKeyDown); };
   }, [handleKeyDown]);
 
   // Lock body scroll when drawer is open
@@ -565,7 +565,7 @@ export function PositionDetailDrawer({
   const { data: analysis, isLoading: analysisLoading } = useQuery({
     queryKey: ["position-analysis", analysisSymbol],
     queryFn: () => runAnalysis(analysisSymbol, "1h"),
-    enabled: !!position,
+    enabled: Boolean(position),
     staleTime: 60_000,
   });
 

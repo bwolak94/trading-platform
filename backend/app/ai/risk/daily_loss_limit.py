@@ -9,7 +9,6 @@ in ``app/tasks.py``, providing a dedicated class with richer state and event
 emission for use in FastAPI request handlers and the WebSocket broadcaster.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Callable, Coroutine, Any

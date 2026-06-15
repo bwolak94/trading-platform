@@ -116,7 +116,6 @@ def analyze_trade(
         patterns.append("late_exit")
 
     # Entry quality
-    ideal_entry = entry_price  # assume actual = ideal for now (no planned entry stored)
     # Good entry: price action aligned with direction
     if signal_confidence >= 0.70:
         patterns.append("good_entry")

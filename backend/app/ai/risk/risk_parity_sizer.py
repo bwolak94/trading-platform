@@ -1,6 +1,6 @@
 """Risk Parity Position Sizer — equal dollar risk per position across assets."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -95,7 +95,7 @@ class RiskParitySizer:
                 diversification_ratio=1.0,
             )
 
-        symbols = list(asset_data.keys())
+        list(asset_data.keys())
         vols: dict[str, float] = {}
 
         for sym, df in asset_data.items():

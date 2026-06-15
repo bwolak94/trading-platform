@@ -55,7 +55,7 @@ export function DarkPoolPanel() {
         <h2 className="text-sm font-semibold text-white">Dark Pool Activity</h2>
         <select
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
+          onChange={(e) => { setSymbol(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
           aria-label="Select asset"
         >

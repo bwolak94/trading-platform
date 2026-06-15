@@ -294,7 +294,6 @@ class PaperTradingEngine:
 
     async def _fetch_current_prices(self, symbols: list[str]) -> dict[str, float]:
         """Fetch latest prices for a list of symbols from Binance."""
-        import httpx
         from app.data.fetchers.binance_fetcher import FUTURES_REST_URL, _check_circuit_breaker, _get_client, _record_success, _record_failure
 
         if not _check_circuit_breaker():

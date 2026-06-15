@@ -101,7 +101,7 @@ function useCountdown(until?: string): string {
 
     tick();
     const id = setInterval(tick, 1_000);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); };
   }, [until]);
 
   return remaining;
@@ -134,7 +134,7 @@ export default function StreakCircuitBreakerWidget() {
     retry: 2,
   });
 
-  const mutation = useMutation<void, Error>({
+  const mutation = useMutation<void>({
     mutationFn: resetCircuitBreaker,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["streak-status"] });

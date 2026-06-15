@@ -51,8 +51,8 @@ export function MacroCountdownWidget() {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => { setNow(Date.now()); }, 30_000);
+    return () => { clearInterval(t); };
   }, []);
 
   const next = events[0];

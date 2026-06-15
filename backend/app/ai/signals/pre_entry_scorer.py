@@ -1,6 +1,6 @@
 """Pre-Entry Checklist Scorer — auto-scores signals against 10 criteria before emission."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import numpy as np

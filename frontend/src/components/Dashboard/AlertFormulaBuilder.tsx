@@ -135,7 +135,7 @@ function ConditionRow({
       {index > 0 && (
         <select
           value={condition.logic}
-          onChange={(e) => onChange(condition.id, "logic", e.target.value)}
+          onChange={(e) => { onChange(condition.id, "logic", e.target.value); }}
           className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-accent focus:outline-none"
           aria-label="Logical operator"
         >
@@ -149,7 +149,7 @@ function ConditionRow({
 
       <select
         value={condition.type}
-        onChange={(e) => onChange(condition.id, "type", e.target.value)}
+        onChange={(e) => { onChange(condition.id, "type", e.target.value); }}
         className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none"
         aria-label="Condition type"
       >
@@ -164,7 +164,7 @@ function ConditionRow({
         <>
           <select
             value={condition.operator}
-            onChange={(e) => onChange(condition.id, "operator", e.target.value)}
+            onChange={(e) => { onChange(condition.id, "operator", e.target.value); }}
             className="w-12 rounded border border-border bg-background px-1 py-0.5 text-xs text-gray-300 focus:outline-none"
             aria-label="Operator"
           >
@@ -177,7 +177,7 @@ function ConditionRow({
           <input
             type="text"
             value={condition.value}
-            onChange={(e) => onChange(condition.id, "value", e.target.value)}
+            onChange={(e) => { onChange(condition.id, "value", e.target.value); }}
             className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Condition value"
           />
@@ -187,7 +187,7 @@ function ConditionRow({
           <span className="text-xs text-gray-500">=</span>
           <select
             value={condition.value}
-            onChange={(e) => onChange(condition.id, "value", e.target.value)}
+            onChange={(e) => { onChange(condition.id, "value", e.target.value); }}
             className="rounded border border-border bg-background px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none"
             aria-label="Regime value"
           >
@@ -202,7 +202,7 @@ function ConditionRow({
 
       <button
         type="button"
-        onClick={() => onRemove(condition.id)}
+        onClick={() => { onRemove(condition.id); }}
         className="ml-auto rounded border border-bearish/30 px-1.5 py-0.5 text-[10px] text-bearish transition-colors hover:bg-bearish/10"
         aria-label="Remove condition"
       >
@@ -252,7 +252,7 @@ export function AlertFormulaBuilder() {
 
   const testMutation = useMutation({
     mutationFn: ({ f, a }: { f: string; a: string }) => testFormula(f, a),
-    onSuccess: (result) => setTestResult(result),
+    onSuccess: (result) => { setTestResult(result); },
   });
 
   const handleAddCondition = useCallback(() => {
@@ -351,14 +351,14 @@ export function AlertFormulaBuilder() {
         <input
           type="text"
           value={alertName}
-          onChange={(e) => setAlertName(e.target.value)}
+          onChange={(e) => { setAlertName(e.target.value); }}
           placeholder="Alert name…"
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent"
           aria-label="Alert name"
         />
         <select
           value={selectedAsset}
-          onChange={(e) => setSelectedAsset(e.target.value)}
+          onChange={(e) => { setSelectedAsset(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
           aria-label="Target asset"
         >
@@ -370,7 +370,7 @@ export function AlertFormulaBuilder() {
         </select>
         <select
           value={selectedChannel}
-          onChange={(e) => setSelectedChannel(e.target.value as AlertChannel)}
+          onChange={(e) => { setSelectedChannel(e.target.value as AlertChannel); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none"
           aria-label="Notification channel"
         >
@@ -427,7 +427,7 @@ export function AlertFormulaBuilder() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => deleteMutation.mutate(alert.id)}
+                  onClick={() => { deleteMutation.mutate(alert.id); }}
                   disabled={deleteMutation.isPending}
                   className="shrink-0 text-[10px] text-gray-500 transition-colors hover:text-bearish"
                   aria-label={`Delete alert: ${alert.name}`}

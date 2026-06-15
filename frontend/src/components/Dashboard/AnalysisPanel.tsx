@@ -50,20 +50,20 @@ export function AnalysisPanel() {
           <label className="mb-1 block text-xs text-gray-500">Asset</label>
           <AssetSearchSelect
             value={asset}
-            onChange={(v) => setAsset(v)}
+            onChange={(v) => { setAsset(v); }}
             aria-label="Asset"
           />
         </div>
         <div>
           <label className="mb-1 block text-xs text-gray-500">Timeframe</label>
-          <select value={tf} onChange={(e) => setTf(e.target.value)}
+          <select value={tf} onChange={(e) => { setTf(e.target.value); }}
             className="rounded border border-border bg-background px-3 py-1.5 text-sm text-white" aria-label="Timeframe">
             {TIMEFRAMES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
           </select>
         </div>
         <div>
           <label className="mb-1 block text-xs text-gray-500">Strategy</label>
-          <select value={strategy} onChange={(e) => setStrategy(e.target.value)}
+          <select value={strategy} onChange={(e) => { setStrategy(e.target.value); }}
             className="rounded border border-border bg-background px-3 py-1.5 text-sm text-white" aria-label="Strategy">
             {STRATEGIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>

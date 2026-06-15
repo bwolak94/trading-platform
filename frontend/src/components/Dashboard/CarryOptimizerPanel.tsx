@@ -200,7 +200,7 @@ export default function CarryOptimizerPanel() {
                     <tr
                       key={opp.symbol}
                       className="cursor-pointer border-b border-border/50 hover:bg-gray-800/40"
-                      onClick={() => toggleExpand(opp.symbol)}
+                      onClick={() => { toggleExpand(opp.symbol); }}
                       role="button"
                       aria-expanded={expandedSymbol === opp.symbol}
                       aria-label={`Toggle details for ${opp.symbol}`}

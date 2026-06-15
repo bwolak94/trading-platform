@@ -148,7 +148,7 @@ export function MultiAssetCorrelationMatrix() {
                         key={colSym}
                         className={`h-6 w-8 rounded-[1px] text-center cursor-default transition-opacity ${corrColor(r)} ${isSelected ? "ring-1 ring-white/50" : ""}`}
                         title={`${rowSym}/${colSym}: ${r.toFixed(2)}`}
-                        onClick={() => setSelectedPair(rowSym === colSym ? null : { a: rowSym, b: colSym })}
+                        onClick={() => { setSelectedPair(rowSym === colSym ? null : { a: rowSym, b: colSym }); }}
                       >
                         {r.toFixed(2)}
                       </td>

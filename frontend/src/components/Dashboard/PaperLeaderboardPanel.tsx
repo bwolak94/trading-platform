@@ -58,7 +58,7 @@ export function PaperLeaderboardPanel() {
             <button
               key={w}
               type="button"
-              onClick={() => setDays(w)}
+              onClick={() => { setDays(w); }}
               className={`rounded px-2 py-1 text-xs transition-colors ${
                 days === w ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"
               }`}

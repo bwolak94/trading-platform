@@ -94,7 +94,7 @@ export function SignalReplayMode() {
             type="date"
             value={selectedDate}
             max={today}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(e) => { setSelectedDate(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Replay date"
           />

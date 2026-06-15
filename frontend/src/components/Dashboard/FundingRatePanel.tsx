@@ -101,7 +101,7 @@ export function FundingRatePanel({ symbols }: FundingRatePanelProps) {
         </div>
       )}
 
-      {data && data.length === 0 && (
+      {data?.length === 0 && (
         <p className="text-sm text-gray-500">No funding rate data available</p>
       )}
     </div>

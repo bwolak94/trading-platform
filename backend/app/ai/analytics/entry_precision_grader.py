@@ -1,11 +1,8 @@
 """Entry Precision Grader — grades actual entries vs ideal signal price."""
 
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from dataclasses import dataclass
 
-import numpy as np
 
 from app.core.logging import get_logger
 

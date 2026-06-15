@@ -10,7 +10,6 @@ Implements:
 
 from __future__ import annotations
 
-import math
 from collections import deque
 from datetime import date, datetime, timezone
 from typing import Any

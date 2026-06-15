@@ -82,7 +82,7 @@ def _run_variant(
             continue
 
         risk_usd = equity * 0.01  # 1% risk per trade
-        qty = risk_usd / stop_dist if stop_dist > 0 else 0
+        risk_usd / stop_dist if stop_dist > 0 else 0
 
         next_hi = candles[i + 1]["high"]
         next_lo = candles[i + 1]["low"]

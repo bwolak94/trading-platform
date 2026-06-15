@@ -1,9 +1,7 @@
 """Trend Trader Strategy — Ichimoku Cloud + Fibonacci + S/R confluence."""
 
 import logging
-from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from app.ai.strategies.base import BaseStrategy, MarketContext, SignalResult

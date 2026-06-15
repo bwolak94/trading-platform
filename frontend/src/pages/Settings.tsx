@@ -68,11 +68,11 @@ export function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
       setSaveMessage("Settings saved successfully.");
-      setTimeout(() => setSaveMessage(null), 3000);
+      setTimeout(() => { setSaveMessage(null); }, 3000);
     },
     onError: () => {
       setSaveMessage("Failed to save settings.");
-      setTimeout(() => setSaveMessage(null), 3000);
+      setTimeout(() => { setSaveMessage(null); }, 3000);
     },
   });
 
@@ -172,7 +172,7 @@ export function SettingsPage() {
                 min={0}
                 step={100}
                 value={capital}
-                onChange={(e) => setCapital(Number(e.target.value))}
+                onChange={(e) => { setCapital(Number(e.target.value)); }}
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
                 aria-label="Trading capital in dollars"
               />
@@ -191,7 +191,7 @@ export function SettingsPage() {
                 max={10}
                 step={0.1}
                 value={riskPct}
-                onChange={(e) => setRiskPct(Number(e.target.value))}
+                onChange={(e) => { setRiskPct(Number(e.target.value)); }}
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
                 aria-label="Risk per trade percentage"
               />
@@ -210,7 +210,7 @@ export function SettingsPage() {
                 max={50}
                 step={0.5}
                 value={maxDD}
-                onChange={(e) => setMaxDD(Number(e.target.value))}
+                onChange={(e) => { setMaxDD(Number(e.target.value)); }}
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white"
                 aria-label="Maximum drawdown percentage"
               />
@@ -230,7 +230,7 @@ export function SettingsPage() {
             {isPaused && (
               <button
                 type="button"
-                onClick={() => resetMutation.mutate()}
+                onClick={() => { resetMutation.mutate(); }}
                 disabled={resetMutation.isPending}
                 className="w-full rounded bg-warning px-4 py-2 text-sm font-medium text-background hover:bg-warning/80 disabled:opacity-50"
                 aria-label="Reset kill switch"
@@ -257,7 +257,7 @@ export function SettingsPage() {
                 <input
                   type="checkbox"
                   checked={enabledAssets.includes(asset)}
-                  onChange={() => toggleAsset(asset)}
+                  onChange={() => { toggleAsset(asset); }}
                   className="h-4 w-4 rounded border-border bg-background accent-bullish"
                   aria-label={`Enable ${asset}`}
                 />
@@ -284,7 +284,7 @@ export function SettingsPage() {
                 id="telegramId"
                 type="text"
                 value={telegramId}
-                onChange={(e) => setTelegramId(e.target.value)}
+                onChange={(e) => { setTelegramId(e.target.value); }}
                 placeholder="e.g. 123456789"
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-white placeholder-gray-600"
                 aria-label="Telegram chat ID"
@@ -299,7 +299,7 @@ export function SettingsPage() {
                 role="switch"
                 aria-checked={notifications}
                 aria-label="Toggle notifications"
-                onClick={() => setNotifications(!notifications)}
+                onClick={() => { setNotifications(!notifications); }}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
                   notifications ? "bg-bullish" : "bg-gray-600"
                 }`}

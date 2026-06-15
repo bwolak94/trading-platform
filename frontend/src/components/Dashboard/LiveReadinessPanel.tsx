@@ -66,7 +66,7 @@ const CHECKLIST: ChecklistItem[] = [
   },
 ];
 
-const GO_LIVE_STEPS: Array<{ step: number; text: string }> = [
+const GO_LIVE_STEPS: { step: number; text: string }[] = [
   { step: 1, text: "Export positions CSV for review" },
   { step: 2, text: "Test strategy on smaller account first" },
   { step: 3, text: "Configure proper exchange API keys" },
@@ -91,7 +91,7 @@ function HowToGoLive() {
     <div className="rounded-lg border border-border/50 bg-surface/20">
       <button
         type="button"
-        onClick={() => setExpanded((p) => !p)}
+        onClick={() => { setExpanded((p) => !p); }}
         className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-surface/40"
         aria-expanded={expanded}
         aria-controls="go-live-steps"

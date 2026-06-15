@@ -20,11 +20,7 @@ function winRateText(_winRate: number): string {
   return "rgba(255,255,255,0.9)";
 }
 
-interface CellMap {
-  [hour: number]: {
-    [day: number]: TimingCell;
-  };
-}
+type CellMap = Record<number, Record<number, TimingCell>>;
 
 export function EntryTimingHeatmapPanel() {
   const { data, isLoading } = useQuery({

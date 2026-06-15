@@ -1,7 +1,7 @@
 """On-demand market analysis — runs regime classifier + strategies on live data."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 import pandas as pd
@@ -104,7 +104,7 @@ def _build_suggested_setup(
     adx = float(last.get("adx_14", 0))
     bb_upper = float(last.get("bb_upper", close + atr))
     bb_lower = float(last.get("bb_lower", close - atr))
-    bb_mid = float(last.get("bb_middle", close))
+    float(last.get("bb_middle", close))
 
     if atr <= 0:
         atr = close * 0.01

@@ -75,7 +75,7 @@ function loadRecentCommandIds(): string[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-      return parsed as string[];
+      return parsed;
     }
     return [];
   } catch {
@@ -307,7 +307,7 @@ export function CommandPalette({ onSelectSymbol, onStartBot, onStopBot, onComman
   })();
 
   // Group by category
-  const grouped: Map<CommandCategory, Command[]> = new Map();
+  const grouped = new Map<CommandCategory, Command[]>();
   const categoryOrder: CommandCategory[] = ["navigation", "action", "assets", "symbol"];
 
   // Preserve category order
@@ -341,14 +341,14 @@ export function CommandPalette({ onSelectSymbol, onStartBot, onStopBot, onComman
       }
     }
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => { window.removeEventListener("keydown", handleKeyDown); };
   }, []);
 
   // Focus input when opened
   useEffect(() => {
     if (open) {
       const id = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(id);
+      return () => { clearTimeout(id); };
     }
   }, [open]);
 
@@ -375,11 +375,11 @@ export function CommandPalette({ onSelectSymbol, onStartBot, onStopBot, onComman
     }
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => { window.removeEventListener("keydown", handleKeyDown); };
   }, [open, flatCommands, selectedIndex, close, executeCommand]);
 
   // Reset selection when query changes
-  useEffect(() => setSelectedIndex(0), [query]);
+  useEffect(() => { setSelectedIndex(0); }, [query]);
 
   if (!open) return null;
 
@@ -409,7 +409,7 @@ export function CommandPalette({ onSelectSymbol, onStartBot, onStopBot, onComman
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); }}
             placeholder="Search commands, symbols..."
             className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             aria-label="Search commands"
@@ -469,8 +469,8 @@ export function CommandPalette({ onSelectSymbol, onStartBot, onStopBot, onComman
                             ? "bg-accent text-accent-foreground"
                             : "text-foreground hover:bg-accent/50"
                         }`}
-                        onMouseEnter={() => setSelectedIndex(idx)}
-                        onClick={() => executeCommand(cmd)}
+                        onMouseEnter={() => { setSelectedIndex(idx); }}
+                        onClick={() => { executeCommand(cmd); }}
                       >
                         {cmd.icon && (
                           <span className="w-5 shrink-0 text-center text-base" aria-hidden="true">

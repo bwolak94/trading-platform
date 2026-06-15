@@ -94,7 +94,7 @@ export function LiquidationHeatmap({ asset }: LiquidationHeatmapProps) {
               ids.add(i);
             }
             setNewIds(ids);
-            setTimeout(() => setNewIds(new Set()), 2000);
+            setTimeout(() => { setNewIds(new Set()); }, 2000);
           }
           prevCountRef.current = d.recent_liquidations.length;
           setData(d);
@@ -102,7 +102,7 @@ export function LiquidationHeatmap({ asset }: LiquidationHeatmapProps) {
         })
         .catch(() => {});
     }, 10_000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); };
   }, [asset]);
 
   // Warning: price within 0.5% of high-intensity zone
@@ -195,7 +195,7 @@ export function LiquidationHeatmap({ asset }: LiquidationHeatmapProps) {
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => { setTab(t.id); }}
             className={`px-4 py-2.5 text-xs font-medium transition-colors ${
               tab === t.id
                 ? "border-b-2 border-purple-500 text-white"

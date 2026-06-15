@@ -57,7 +57,7 @@ const AlertForm = React.memo(function AlertForm({ onAdd }: AlertFormProps) {
       <div className="grid grid-cols-2 gap-2">
         <select
           value={asset}
-          onChange={(e) => setAsset(e.target.value)}
+          onChange={(e) => { setAsset(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
           aria-label="Select asset"
         >
@@ -69,7 +69,7 @@ const AlertForm = React.memo(function AlertForm({ onAdd }: AlertFormProps) {
         </select>
         <select
           value={condition}
-          onChange={(e) => setCondition(e.target.value as AlertCondition)}
+          onChange={(e) => { setCondition(e.target.value as AlertCondition); }}
           className="rounded border border-border bg-background px-2 py-1.5 text-xs text-white focus:border-accent focus:outline-none"
           aria-label="Select condition"
         >
@@ -87,7 +87,7 @@ const AlertForm = React.memo(function AlertForm({ onAdd }: AlertFormProps) {
             step="any"
             min="0"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => { setValue(e.target.value); }}
             placeholder="Value"
             className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:border-accent focus:outline-none"
             aria-label="Alert threshold value"
@@ -153,7 +153,7 @@ export function AlertSystem() {
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => toggleAlert(alert.id)}
+                    onClick={() => { toggleAlert(alert.id); }}
                     className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
                       alert.enabled
                         ? "bg-bullish/20 text-bullish"
@@ -167,7 +167,7 @@ export function AlertSystem() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeAlert(alert.id)}
+                    onClick={() => { removeAlert(alert.id); }}
                     className="rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-bearish/20 hover:text-bearish"
                     aria-label="Remove alert"
                   >

@@ -180,7 +180,7 @@ export function useHotkeys({
     }
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => { window.removeEventListener("keydown", handleKeyDown); };
   }, [
     enabled,
     onTimeframeChange,

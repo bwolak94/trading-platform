@@ -42,7 +42,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     };
 
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => { document.removeEventListener("keydown", handleKeyDown); };
   }, [open, onClose]);
 
   // Trap focus inside panel while open
@@ -118,7 +118,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 role="radio"
                 aria-checked={theme === value}
                 aria-label={`${label} theme — ${description}`}
-                onClick={() => setTheme(value)}
+                onClick={() => { setTheme(value); }}
                 className={[
                   "flex flex-col items-center gap-1 rounded-lg border px-2 py-3 text-xs font-medium transition-colors",
                   theme === value

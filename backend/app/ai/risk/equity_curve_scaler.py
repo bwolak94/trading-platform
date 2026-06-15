@@ -9,10 +9,8 @@ the system is struggling and ramping back up when it recovers.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 from app.core.logging import get_logger

@@ -44,7 +44,7 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
-  const toggleShortcuts = useCallback(() => setShowShortcuts((prev) => !prev), []);
+  const toggleShortcuts = useCallback(() => { setShowShortcuts((prev) => !prev); }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -73,7 +73,7 @@ function App() {
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => { window.removeEventListener("keydown", handleKeyDown); };
   }, [showShortcuts]);
 
   const navItems: { label: string; shortcut: string; page: Page }[] = [
@@ -132,7 +132,7 @@ function App() {
               <button
                 type="button"
                 className="rounded p-1.5 text-muted hover:bg-surface hover:text-foreground md:hidden"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                onClick={() => { setMobileMenuOpen(!mobileMenuOpen); }}
                 aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
                 aria-expanded={mobileMenuOpen}
               >
@@ -159,7 +159,7 @@ function App() {
                     label={item.label}
                     shortcut={item.shortcut}
                     active={page === item.page}
-                    onClick={() => setPage(item.page)}
+                    onClick={() => { setPage(item.page); }}
                   />
                 ))}
               </div>
@@ -200,7 +200,7 @@ function App() {
 
           {/* Keyboard shortcuts modal */}
           {showShortcuts && (
-            <ShortcutsModal onClose={() => setShowShortcuts(false)} navItems={navItems} />
+            <ShortcutsModal onClose={() => { setShowShortcuts(false); }} navItems={navItems} />
           )}
         </div>
       </WebSocketProvider>

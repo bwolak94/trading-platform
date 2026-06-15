@@ -78,7 +78,7 @@ export function LayoutPresets({ onApplyPreset, activePreset }: LayoutPresetsProp
           <button
             key={key}
             type="button"
-            onClick={() => onApplyPreset(key)}
+            onClick={() => { onApplyPreset(key); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors
               ${
                 isActive

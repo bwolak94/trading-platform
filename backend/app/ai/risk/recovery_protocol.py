@@ -12,8 +12,7 @@ belongs to the human operator.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from app.core.logging import get_logger
 
@@ -303,8 +302,8 @@ class RecoveryProtocol:
         can_upgrade = self.can_upgrade_stage(drawdown_pct)
 
         lines = [
-            f"Recovery Protocol Status",
-            f"========================",
+            "Recovery Protocol Status",
+            "========================",
             f"Current Drawdown : {drawdown_pct:.2f}%",
             f"Stage            : {stage.stage_name}",
             f"Position Scale   : {stage.position_scale:.0%}",

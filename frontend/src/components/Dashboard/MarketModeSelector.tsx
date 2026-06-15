@@ -208,7 +208,7 @@ export default function MarketModeSelector() {
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4" role="radiogroup" aria-label="Market mode selection">
             {MODES.map((mode) => {
-              const styles = MODE_STYLES[mode.color] ?? MODE_STYLES["gray"]!;
+              const styles = MODE_STYLES[mode.color] ?? MODE_STYLES.gray!;
               const isActive = activeMode === mode.id && !isAutoMode;
               return (
                 <button
@@ -216,7 +216,7 @@ export default function MarketModeSelector() {
                   type="button"
                   role="radio"
                   aria-checked={isActive}
-                  onClick={() => handleSelect(mode.id)}
+                  onClick={() => { handleSelect(mode.id); }}
                   disabled={mutation.isPending}
                   className={`relative flex flex-col items-center justify-center rounded-lg border-2 px-4 py-4 text-center transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-60 ${
                     isActive ? styles.activeBg : styles.bg
@@ -262,7 +262,7 @@ export default function MarketModeSelector() {
               type="button"
               role="switch"
               aria-checked={isAutoMode}
-              onClick={() => handleSelect("AUTO")}
+              onClick={() => { handleSelect("AUTO"); }}
               disabled={mutation.isPending}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-60 ${
                 isAutoMode ? "bg-blue-600" : "bg-gray-700"

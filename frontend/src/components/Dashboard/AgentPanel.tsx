@@ -211,7 +211,7 @@ function StatusHeader() {
       </div>
 
       <button
-        onClick={() => (running ? stopMutation.mutate() : startMutation.mutate())}
+        onClick={() => { running ? stopMutation.mutate() : startMutation.mutate(); }}
         disabled={busy}
         aria-label={running ? "Stop the AI agent" : "Start the AI agent"}
         className={`rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${

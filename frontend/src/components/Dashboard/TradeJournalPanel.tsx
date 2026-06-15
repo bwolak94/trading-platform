@@ -155,7 +155,7 @@ export default function TradeJournalPanel() {
         <div className="flex items-center gap-2">
           <select
             value={period}
-            onChange={(e) => setPeriod(parseInt(e.target.value) as PeriodDays)}
+            onChange={(e) => { setPeriod(parseInt(e.target.value) as PeriodDays); }}
             className="rounded border border-border bg-gray-800 px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
             aria-label="Select period"
           >

@@ -121,7 +121,7 @@ export function FootprintChart() {
   // Auto-refresh every 5 seconds
   useEffect(() => {
     const timer = setInterval(loadData, 5_000);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); };
   }, [loadData]);
 
   // Get all price levels and max volume for color scaling
@@ -453,7 +453,7 @@ export function FootprintChart() {
       draw();
     });
     observer.observe(container);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, [draw]);
 
   // Mouse wheel => zoom row height
@@ -565,7 +565,7 @@ export function FootprintChart() {
           {/* Asset selector */}
           <select
             value={asset}
-            onChange={(e) => setAsset(e.target.value)}
+            onChange={(e) => { setAsset(e.target.value); }}
             className="rounded border border-border bg-background px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-accent"
             aria-label="Select asset"
           >
@@ -581,7 +581,7 @@ export function FootprintChart() {
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
-                onClick={() => setTimeframe(tf)}
+                onClick={() => { setTimeframe(tf); }}
                 className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
                   timeframe === tf
                     ? "bg-accent/20 text-accent"

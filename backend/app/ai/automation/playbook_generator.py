@@ -54,7 +54,7 @@ def generate_playbook(
 
     entry_price = float(signal.get("entry_price") or current_price)
     stop_loss = float(signal.get("stop_loss") or _compute_stop(entry_price, direction, atr_value))
-    take_profit_1 = float(signal.get("take_profit") or _compute_tp(entry_price, stop_loss, direction, 1.0))
+    float(signal.get("take_profit") or _compute_tp(entry_price, stop_loss, direction, 1.0))
 
     # Risk distance
     risk_distance = abs(entry_price - stop_loss)

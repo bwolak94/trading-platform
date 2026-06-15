@@ -2,12 +2,10 @@
 
 import asyncio
 import logging
-import re
 import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
 import httpx
 
@@ -188,7 +186,7 @@ class NewsAggregator:
 
     def get_sentiment_snapshot(self) -> dict:
         recent = list(self._news)[:20]
-        emergencies = [n.title for n in recent if n.is_emergency]
+        [n.title for n in recent if n.is_emergency]
         impact_zones = []
 
         # Determine impact zones from recent keywords

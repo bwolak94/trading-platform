@@ -41,7 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (
       message: string,
       type: Toast["type"] = "info",
-      duration: number = 5000,
+      duration = 5000,
     ) => {
       const id = nextId++;
       setToasts((prev) => [...prev, { id, message, type, duration }]);
@@ -99,7 +99,7 @@ function ToastItem({
     const timer = setTimeout(() => {
       onRemove(toast.id);
     }, toast.duration);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); };
   }, [toast.id, toast.duration, onRemove]);
 
   return (
@@ -110,7 +110,7 @@ function ToastItem({
       <span className="flex-1">{toast.message}</span>
       <button
         type="button"
-        onClick={() => onRemove(toast.id)}
+        onClick={() => { onRemove(toast.id); }}
         className="shrink-0 opacity-60 hover:opacity-100"
         aria-label="Dismiss notification"
       >

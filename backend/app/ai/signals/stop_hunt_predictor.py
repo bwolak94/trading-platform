@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 
 from app.core.logging import get_logger
@@ -114,7 +113,7 @@ class StopHuntPredictor:
         nearest = min(target_clusters, key=lambda c: c.distance_pct)
 
         # Confidence calculation
-        total_strength = upper_strength + lower_strength
+        upper_strength + lower_strength
         direction_ratio = (
             adjusted_upper / (adjusted_upper + adjusted_lower)
             if hunt_direction == "UP"

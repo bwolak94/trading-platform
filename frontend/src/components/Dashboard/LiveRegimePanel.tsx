@@ -31,7 +31,7 @@ const regimeConfig: Record<string, { label: string; color: string; dot: string; 
 };
 
 function getRegimeConfig(regime: string) {
-  return regimeConfig[regime] ?? regimeConfig["CONSOLIDATION"]!;
+  return regimeConfig[regime] ?? regimeConfig.CONSOLIDATION!;
 }
 
 // --------------- HMM types ---------------
@@ -188,7 +188,7 @@ export function LiveRegimePanel() {
         </div>
       )}
 
-      {regimes && regimes.length === 0 && (
+      {regimes?.length === 0 && (
         <p className="text-sm text-gray-500">No regime data available</p>
       )}
     </div>

@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 
@@ -218,7 +218,7 @@ class ExchangeFlowAnalyzer:
         if total < self.SIGNIFICANT_FLOW_USD:
             return "NEUTRAL", "NEUTRAL", 20.0
 
-        net = outflow - inflow  # positive = more outflow (bullish)
+        outflow - inflow  # positive = more outflow (bullish)
 
         if inflow == 0 and outflow > 0:
             return "OUTFLOW", "BULLISH_ACCUMULATION", 70.0

@@ -189,8 +189,8 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
   useEffect(() => {
     if (!showSignals) { setSignalMarkers([]); return; }
     void fetchSignalMarkersForSymbol(asset, 50)
-      .then((res) => setSignalMarkers(res.signals))
-      .catch(() => setSignalMarkers([]));
+      .then((res) => { setSignalMarkers(res.signals); })
+      .catch(() => { setSignalMarkers([]); });
   }, [showSignals, asset]);
 
   // Sync external signalsProp when provided
@@ -212,10 +212,10 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
   // Track fullscreen state changes (ESC key, etc.)
   useEffect(() => {
     function onFullscreenChange() {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(Boolean(document.fullscreenElement));
     }
     document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+    return () => { document.removeEventListener("fullscreenchange", onFullscreenChange); };
   }, []);
 
   // Serialize active indicators to string for key
@@ -244,7 +244,7 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
 
           <div className="flex flex-wrap gap-0.5">
             {CANDLE_COUNTS.map((c) => (
-              <button key={c} type="button" onClick={() => setCount(c)}
+              <button key={c} type="button" onClick={() => { setCount(c); }}
                 className={`min-h-[44px] min-w-[44px] rounded px-2 py-1 text-xs ${count === c ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
                 aria-label={`${c} candles`}>{c}</button>
             ))}
@@ -253,7 +253,7 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Heikin-Ashi toggle */}
-          <button type="button" onClick={() => setHeikinAshi((prev) => !prev)}
+          <button type="button" onClick={() => { setHeikinAshi((prev) => !prev); }}
             className={`min-h-[44px] min-w-[44px] rounded px-2.5 py-1.5 text-xs font-bold transition-colors ${heikinAshi ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
             aria-label={heikinAshi ? "Disable Heikin-Ashi candles" : "Enable Heikin-Ashi candles"}
             aria-pressed={heikinAshi}
@@ -262,7 +262,7 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
           </button>
 
           {/* Volume Profile toggle */}
-          <button type="button" onClick={() => setShowVPVR((prev) => !prev)}
+          <button type="button" onClick={() => { setShowVPVR((prev) => !prev); }}
             className={`min-h-[44px] flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${showVPVR ? "bg-orange-500/20 border border-orange-500/50 text-orange-400" : "bg-background text-gray-400 hover:text-white"}`}
             aria-label={showVPVR ? "Hide Volume Profile" : "Show Volume Profile"}
             aria-pressed={showVPVR}
@@ -271,7 +271,7 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
           </button>
 
           {/* Show Signals toggle */}
-          <button type="button" onClick={() => setShowSignals((prev) => !prev)}
+          <button type="button" onClick={() => { setShowSignals((prev) => !prev); }}
             className={`min-h-[44px] flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${showSignals ? "bg-accent/20 border border-accent/50 text-accent" : "bg-background text-gray-400 hover:text-white"}`}
             aria-label={showSignals ? "Hide signal overlay" : "Show signal overlay"}
             aria-pressed={showSignals}
@@ -280,7 +280,7 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
           </button>
 
         {/* Indicators toggle button */}
-        <button type="button" onClick={() => setShowIndicatorPanel(!showIndicatorPanel)}
+        <button type="button" onClick={() => { setShowIndicatorPanel(!showIndicatorPanel); }}
           className={`min-h-[44px] flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium ${showIndicatorPanel ? "bg-accent text-white" : "bg-background text-gray-400 hover:text-white"}`}
           aria-label="Toggle indicators panel">
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -315,10 +315,10 @@ export function PriceChart({ onAssetChange, activePosition, compact, defaultAsse
               <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-500">{group.label}</span>
               <div className="flex flex-wrap gap-1.5">
                 {group.items.map((ind) => {
-                  const active = activeIndicators.has(ind.id as IndicatorId);
+                  const active = activeIndicators.has(ind.id);
                   return (
                     <button key={ind.id} type="button"
-                      onClick={() => toggleIndicator(ind.id as IndicatorId)}
+                      onClick={() => { toggleIndicator(ind.id); }}
                       className={`min-h-[44px] flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition-colors ${
                         active ? "border-transparent text-white" : "border-border text-gray-500 hover:text-gray-300"
                       }`}
@@ -438,8 +438,8 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
 
     chart.subscribeCrosshairMove((p: MouseEventParams) => {
       if (!p.time || !p.seriesData) { setHover(null); return; }
-      const c = p.seriesData.get(cs) as CandlestickData<Time> | undefined;
-      const v = p.seriesData.get(vs) as HistogramData<Time> | undefined;
+      const c = p.seriesData.get(cs) as CandlestickData | undefined;
+      const v = p.seriesData.get(vs) as HistogramData | undefined;
       if (c) {
         const ch = c.close - c.open;
         setHover({ open: c.open, high: c.high, low: c.low, close: c.close, volume: v?.value ?? 0, change: ch, changePct: c.open ? (ch / c.open) * 100 : 0 });
@@ -563,12 +563,12 @@ function ChartCanvas({ asset, timeframe, candleLimit, activeIndicators, activePo
         Promise.all(promises).then(() => {
           chart.timeScale().fitContent();
           setLoading(false);
-        }).catch(() => setLoading(false));
+        }).catch(() => { setLoading(false); });
       } else {
         chart.timeScale().fitContent();
         setLoading(false);
       }
-    }).catch(() => setLoading(false));
+    }).catch(() => { setLoading(false); });
 
     // Live updates — WebSocket for crypto, polling for forex
     const isCryptoPair = asset.toUpperCase().endsWith("USDT") || CRYPTO_SET.has(asset.toUpperCase());
@@ -726,7 +726,7 @@ interface VPVRBin {
  */
 function computeVPVRBins(
   klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
-  numBins: number = 50,
+  numBins = 50,
 ): VPVRBin[] {
   if (klines.length < 2) return [];
 
@@ -1177,7 +1177,7 @@ function thermalColor(intensity: number): string {
 
 function computeHeatmapCells(
   klines: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
-  numBins: number = 60,
+  numBins = 60,
 ): HeatCell[] {
   if (klines.length < 2) return [];
 

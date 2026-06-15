@@ -11,8 +11,7 @@ All endpoints used are public (no authentication required).
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Final
 
 import httpx
@@ -218,7 +217,7 @@ class DeribitFetcher:
                     if mid_iv > 0:
                         strike_data[strike]["put_iv"] = mid_iv
 
-        total_volume = put_volume + call_volume
+        put_volume + call_volume
         pcr = (put_volume / call_volume) if call_volume > 0 else 1.0
 
         # --- Step 4: GEX and max pain ---
@@ -270,7 +269,7 @@ class DeribitFetcher:
         """
         currency = currency.upper()
         # Deribit volatility index: DVOL for BTC / ETH
-        index_name = f"{currency.lower()}_dvol"
+        f"{currency.lower()}_dvol"
 
         # end_timestamp: now (ms), start_timestamp: lookback_days ago
         import time

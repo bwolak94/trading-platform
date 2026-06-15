@@ -68,7 +68,7 @@ export function WalkForwardOptimizationUI() {
           <select
             id="wf-symbol"
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
+            onChange={(e) => { setSymbol(e.target.value); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300"
           >
             <option value="BTC/USDT">BTC/USDT</option>
@@ -81,7 +81,7 @@ export function WalkForwardOptimizationUI() {
           <select
             id="wf-strategy"
             value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
+            onChange={(e) => { setStrategy(e.target.value); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300"
           >
             <option value="trend_following">Trend Following</option>
@@ -95,7 +95,7 @@ export function WalkForwardOptimizationUI() {
           <select
             id="wf-tf"
             value={timeframe}
-            onChange={(e) => setTimeframe(e.target.value)}
+            onChange={(e) => { setTimeframe(e.target.value); }}
             className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs text-gray-300"
           >
             <option value="1h">1h</option>
@@ -113,7 +113,7 @@ export function WalkForwardOptimizationUI() {
             min={50}
             max={80}
             value={isPct}
-            onChange={(e) => setIsPct(Number(e.target.value))}
+            onChange={(e) => { setIsPct(Number(e.target.value)); }}
             className="w-full accent-accent"
           />
         </div>

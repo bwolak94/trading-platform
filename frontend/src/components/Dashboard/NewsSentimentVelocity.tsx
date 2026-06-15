@@ -145,7 +145,7 @@ export function NewsSentimentVelocity() {
         </div>
         <select
           value={selectedAsset}
-          onChange={(e) => setSelectedAsset(e.target.value)}
+          onChange={(e) => { setSelectedAsset(e.target.value); }}
           className="rounded border border-border bg-background px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
           aria-label="Filter news by asset"
         >

@@ -90,7 +90,7 @@ function useHoursCountdown(hoursUntil: number): string {
 
     tick();
     const id = setInterval(tick, 1_000);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); };
   }, [hoursUntil]);
 
   return display;
@@ -160,7 +160,7 @@ export default function OvernightGapWidget() {
         </div>
         <select
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
+          onChange={(e) => { setSymbol(e.target.value); }}
           className="rounded border border-border bg-gray-800 px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
           aria-label="Select symbol for gap risk"
         >

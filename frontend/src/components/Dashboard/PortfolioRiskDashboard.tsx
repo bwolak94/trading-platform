@@ -305,8 +305,7 @@ export default function PortfolioRiskDashboard() {
               [...Array(3)].map((_, i) => <SkeletonRow key={i} />)}
 
             {!positionsLoading &&
-              positions &&
-              positions.length === 0 && (
+              positions?.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}

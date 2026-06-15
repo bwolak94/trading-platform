@@ -1,7 +1,6 @@
 """Confidence Calibrator — self-recalibrates signal confidence scores from outcomes."""
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 

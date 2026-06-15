@@ -96,7 +96,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       setTimeout(connect, delay);
     };
 
-    ws.onerror = () => ws.close();
+    ws.onerror = () => { ws.close(); };
   }, []);
 
   // Flush the message buffer every 100 ms — single batch state update
@@ -107,7 +107,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       bufferRef.current = [];
       setLastBatch(batch);
     }, 100);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); };
   }, []);
 
   useEffect(() => {

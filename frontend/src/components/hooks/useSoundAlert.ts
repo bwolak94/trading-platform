@@ -121,10 +121,10 @@ export function useSoundAlert() {
     /** Generic play function — preferred API */
     play,
     /** Convenience aliases */
-    playSignalAlert: useCallback(() => play("signal"), [play]),
-    playWarning:     useCallback(() => play("warning"), [play]),
-    playSuccess:     useCallback(() => play("success"), [play]),
-    playError:       useCallback(() => play("error"), [play]),
+    playSignalAlert: useCallback(() => { play("signal"); }, [play]),
+    playWarning:     useCallback(() => { play("warning"); }, [play]),
+    playSuccess:     useCallback(() => { play("success"); }, [play]),
+    playError:       useCallback(() => { play("error"); }, [play]),
     /** State */
     enabled,
     /** @deprecated use enabled — kept for backwards compatibility */

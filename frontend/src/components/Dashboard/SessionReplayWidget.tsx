@@ -72,7 +72,7 @@ export function SessionReplayWidget() {
         type: "NEW_SIGNAL",
         timestamp: Date.now(),
         data: p,
-        label: `New Signal: ${String(p["asset"] ?? "")} ${String(p["direction"] ?? "")}`,
+        label: `New Signal: ${String(p.asset ?? "")} ${String(p.direction ?? "")}`,
       };
     } else if (lastMessage.type === "REGIME_CHANGE") {
       const p = lastMessage.payload;
@@ -81,7 +81,7 @@ export function SessionReplayWidget() {
         type: "REGIME_CHANGE",
         timestamp: Date.now(),
         data: p,
-        label: `Regime Change: ${String(p["asset"] ?? "")} → ${String(p["regime"] ?? "")}`,
+        label: `Regime Change: ${String(p.asset ?? "")} → ${String(p.regime ?? "")}`,
       };
     } else if (lastMessage.type === "KILL_SWITCH_TRIGGERED") {
       event = {
@@ -94,7 +94,7 @@ export function SessionReplayWidget() {
     }
 
     if (event) {
-      setEvents((prev) => [event!, ...prev].slice(0, 200));
+      setEvents((prev) => [event, ...prev].slice(0, 200));
     }
   }, [lastMessage]);
 
